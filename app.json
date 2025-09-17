@@ -30,8 +30,8 @@
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "GOOGLE_STT_API_KEY": "AIzaSyBjXIUkoDTbqg1MTkKoQjexc49LXsHUjS4",
-      "OPENAI_API_KEY": "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"
+      "GOOGLE_STT_API_KEY": "process.env.GOOGLE_STT_API_KEY",
+      "OPENAI_API_KEY": "process.env.OPENAI_API_KEY"
     }
   }
 }
