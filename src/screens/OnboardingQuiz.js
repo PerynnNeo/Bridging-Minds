@@ -100,6 +100,25 @@ export default function OnboardingQuiz({ navigation }) {
       duration: 600,
       useNativeDriver: true,
     }).start();
+    
+    // Test Web Audio API availability
+    console.log('🔍 Testing Web Audio API availability...');
+    console.log('🔍 navigator.mediaDevices:', !!navigator.mediaDevices);
+    console.log('🔍 navigator.mediaDevices.getUserMedia:', !!navigator.mediaDevices?.getUserMedia);
+    console.log('🔍 AudioContext:', !!window.AudioContext || !!window.webkitAudioContext);
+    console.log('🔍 MediaRecorder:', !!window.MediaRecorder);
+    
+    // Test basic microphone access
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+          console.log('✅ Basic microphone access works!');
+          stream.getTracks().forEach(track => track.stop());
+        })
+        .catch(err => {
+          console.error('❌ Basic microphone access failed:', err);
+        });
+    }
   }, []);
 
   useEffect(() => {
@@ -118,11 +137,15 @@ export default function OnboardingQuiz({ navigation }) {
   // Start recording
   const startRecording = async () => {
     try {
-      console.log('Starting recording...');
+      console.log('🎤 STARTING RECORDING - OnboardingQuiz');
+      console.log('Platform:', Platform.OS);
+      console.log('User Agent:', navigator.userAgent);
       
       // Request permissions with better error handling
+      console.log('🔐 Requesting microphone permissions...');
       const { status } = await Audio.requestPermissionsAsync();
-      console.log('Permission status:', status);
+      console.log('🔐 Permission status:', status);
+      console.log('🔐 Permission granted?', status === 'granted');
       
       if (status !== 'granted') {
         Alert.alert(
@@ -144,6 +167,7 @@ export default function OnboardingQuiz({ navigation }) {
       }
 
       // Set audio mode with mobile-specific configurations
+      console.log('🔊 Setting audio mode...');
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
@@ -151,8 +175,9 @@ export default function OnboardingQuiz({ navigation }) {
         playThroughEarpieceAndroid: false,
         staysActiveInBackground: false,
       });
+      console.log('🔊 Audio mode set successfully');
 
-      console.log('Audio mode set, creating recording...');
+      console.log('🎙️ Creating recording instance...');
       
       const recordingInstance = new Audio.Recording();
       await recordingInstance.prepareToRecordAsync({
@@ -178,12 +203,15 @@ export default function OnboardingQuiz({ navigation }) {
         },
       });
       
-      console.log('Recording prepared, starting...');
+      console.log('🎙️ Recording prepared, starting...');
       await recordingInstance.startAsync();
+      console.log('🎙️ Recording startAsync() completed');
       
       setRecording(recordingInstance);
       setIsRecording(true);
-      console.log('Recording started successfully');
+      console.log('✅ RECORDING STARTED SUCCESSFULLY!');
+      console.log('✅ isRecording state:', true);
+      console.log('✅ recording instance:', recordingInstance);
 
       // Auto-stop after 15 seconds
       setTimeout(() => {
@@ -352,11 +380,16 @@ export default function OnboardingQuiz({ navigation }) {
               {micRecommended ? '🎤 Speak your answer (recommended)' : '🎤 Mic is available to speak'}
             </Text>
             
+            {/* Debug Info */}
+            <Text style={styles.debugText}>
+              Status: {isRecording ? '🔴 RECORDING' : '⚪ Ready'} | Processing: {isProcessing ? 'Yes' : 'No'}
+            </Text>
+            
             <View style={styles.micButtonContainer}>
               {isRecording ? (
                 <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
                   <TouchableOpacity
-                    style={styles.micButton}
+                    style={[styles.micButton, styles.recordingButton]}
                     onPress={stopRecording}
                     disabled={isProcessing}
                   >
@@ -364,12 +397,12 @@ export default function OnboardingQuiz({ navigation }) {
                       source={require('../../assets/mic_recording.png')}
                       style={styles.micIcon}
                     />
-                    <Text style={styles.micButtonText}>Stop</Text>
+                    <Text style={styles.micButtonText}>🔴 STOP RECORDING</Text>
                   </TouchableOpacity>
                 </Animated.View>
               ) : (
                 <TouchableOpacity
-                  style={styles.micButton}
+                  style={[styles.micButton, styles.readyButton]}
                   onPress={startRecording}
                   disabled={isProcessing}
                 >
@@ -377,7 +410,7 @@ export default function OnboardingQuiz({ navigation }) {
                     source={require('../../assets/mic.png')}
                     style={styles.micIcon}
                   />
-                  <Text style={styles.micButtonText}>Speak</Text>
+                  <Text style={styles.micButtonText}>🎤 START RECORDING</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -589,6 +622,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 8,
+    borderRadius: 12,
+    borderWidth: 2,
+  },
+  readyButton: {
+    backgroundColor: '#e8f5e8',
+    borderColor: '#4caf50',
+  },
+  recordingButton: {
+    backgroundColor: '#ffebee',
+    borderColor: '#f44336',
   },
   micIcon: {
     width: 60,
@@ -599,6 +642,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#d32f2f',
+  },
+  debugText: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 8,
+    fontFamily: 'monospace',
   },
   processingContainer: {
     flexDirection: 'row',
