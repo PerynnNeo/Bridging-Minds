@@ -11,7 +11,8 @@ import {
   Alert,
   Image,
   ActivityIndicator,
-  Platform
+  Platform,
+  Linking
 } from 'react-native';
 import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
@@ -117,50 +118,118 @@ export default function OnboardingQuiz({ navigation }) {
   // Start recording
   const startRecording = async () => {
     try {
+      console.log('Starting recording...');
+      
+      // Request permissions with better error handling
       const { status } = await Audio.requestPermissionsAsync();
+      console.log('Permission status:', status);
+      
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Microphone permission is needed for voice input.');
+        Alert.alert(
+          'Permission Required', 
+          'Microphone permission is needed for voice input. Please enable it in your device settings.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Settings', onPress: () => {
+              // On mobile, this will open app settings
+              if (Platform.OS === 'ios') {
+                Linking.openURL('app-settings:');
+              } else {
+                Linking.openSettings();
+              }
+            }}
+          ]
+        );
         return;
       }
 
+      // Set audio mode with mobile-specific configurations
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+        staysActiveInBackground: false,
       });
 
+      console.log('Audio mode set, creating recording...');
+      
       const recordingInstance = new Audio.Recording();
-      await recordingInstance.prepareToRecordAsync(Audio.RECORDING_OPTIONS_PRESET_HIGH_QUALITY);
+      await recordingInstance.prepareToRecordAsync({
+        ...Audio.RECORDING_OPTIONS_PRESET_HIGH_QUALITY,
+        android: {
+          extension: '.m4a',
+          outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
+          audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
+          sampleRate: 44100,
+          numberOfChannels: 2,
+          bitRate: 128000,
+        },
+        ios: {
+          extension: '.m4a',
+          outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
+          audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
+          sampleRate: 44100,
+          numberOfChannels: 2,
+          bitRate: 128000,
+          linearPCMBitDepth: 16,
+          linearPCMIsBigEndian: false,
+          linearPCMIsFloat: false,
+        },
+      });
+      
+      console.log('Recording prepared, starting...');
       await recordingInstance.startAsync();
       
       setRecording(recordingInstance);
       setIsRecording(true);
+      console.log('Recording started successfully');
 
       // Auto-stop after 15 seconds
       setTimeout(() => {
-        if (isRecording) stopRecording();
+        if (isRecording) {
+          console.log('Auto-stopping recording after timeout');
+          stopRecording();
+        }
       }, 15000);
     } catch (error) {
       console.error('Recording error:', error);
-      Alert.alert('Recording Error', 'Could not start recording. Please try again.');
+      setIsRecording(false);
+      setRecording(null);
+      Alert.alert(
+        'Recording Error', 
+        `Could not start recording: ${error.message}. Please try again or use text input instead.`
+      );
     }
   };
 
   // Stop recording and transcribe
   const stopRecording = async () => {
     try {
-      if (!recording) return;
+      console.log('Stopping recording...');
+      
+      if (!recording) {
+        console.log('No recording to stop');
+        return;
+      }
       
       setIsRecording(false);
       setIsProcessing(true);
+      console.log('Recording state updated, stopping...');
       
       await recording.stopAndUnloadAsync();
       const uri = recording.getURI();
+      console.log('Recording stopped, URI:', uri);
+      
       setRecording(null);
 
       if (GOOGLE_STT_API_KEY) {
+        console.log('Transcribing with Google STT...');
         const transcript = await transcribeAudio(uri);
+        console.log('Transcript received:', transcript);
         handleAnswer(transcript);
       } else {
+        console.log('Using mock transcription...');
         // Mock transcription for testing
         const mockTranscripts = [
           "I like playing games and drawing",
@@ -170,11 +239,17 @@ export default function OnboardingQuiz({ navigation }) {
           "I feel happy when I'm with my family"
         ];
         const randomTranscript = mockTranscripts[Math.floor(Math.random() * mockTranscripts.length)];
+        console.log('Mock transcript:', randomTranscript);
         handleAnswer(randomTranscript);
       }
     } catch (error) {
       console.error('Stop recording error:', error);
-      Alert.alert('Error', 'Could not process your voice. Please try typing instead.');
+      setIsRecording(false);
+      setRecording(null);
+      Alert.alert(
+        'Error', 
+        `Could not process your voice: ${error.message}. Please try typing instead.`
+      );
     } finally {
       setIsProcessing(false);
     }

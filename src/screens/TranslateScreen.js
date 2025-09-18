@@ -9,6 +9,8 @@ import {
   Animated,
   ScrollView,
   Alert,
+  Platform,
+  Linking,
 } from "react-native";
 import * as Speech from "expo-speech";
 import { Audio } from "expo-av";
@@ -374,27 +376,79 @@ export default function TranslateScreen({ navigation }) {
   // Start recording
   const startRecording = async () => {
     try {
+      console.log('Starting recording in TranslateScreen...');
       setStatusMsg("I'm listening! Speak up!");
+      
       const { status } = await Audio.requestPermissionsAsync();
-      if (status !== "granted") throw new Error("Microphone permission not granted");
+      console.log('Permission status:', status);
+      
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission Required", 
+          "Microphone permission is needed for voice input. Please enable it in your device settings.",
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Settings', onPress: () => {
+              if (Platform.OS === 'ios') {
+                Linking.openURL('app-settings:');
+              } else {
+                Linking.openSettings();
+              }
+            }}
+          ]
+        );
+        return;
+      }
 
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+        staysActiveInBackground: false,
       });
 
       const rec = new Audio.Recording();
-      await rec.prepareToRecordAsync(Audio.RECORDING_OPTIONS_PRESET_HIGH_QUALITY);
+      await rec.prepareToRecordAsync({
+        ...Audio.RECORDING_OPTIONS_PRESET_HIGH_QUALITY,
+        android: {
+          extension: '.m4a',
+          outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
+          audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
+          sampleRate: 44100,
+          numberOfChannels: 2,
+          bitRate: 128000,
+        },
+        ios: {
+          extension: '.m4a',
+          outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
+          audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
+          sampleRate: 44100,
+          numberOfChannels: 2,
+          bitRate: 128000,
+          linearPCMBitDepth: 16,
+          linearPCMIsBigEndian: false,
+          linearPCMIsFloat: false,
+        },
+      });
+      
       await rec.startAsync();
       setRecordingRef(rec);
       setIsRecording(true);
+      console.log('Recording started successfully in TranslateScreen');
 
       // auto-stop after 10s
       setTimeout(() => {
-        if (isRecording) stopRecording();
+        if (isRecording) {
+          console.log('Auto-stopping recording after timeout');
+          stopRecording();
+        }
       }, 10000);
     } catch (e) {
-      Alert.alert("Recording Error", e.message);
+      console.error('Recording error in TranslateScreen:', e);
+      setIsRecording(false);
+      setRecordingRef(null);
+      Alert.alert("Recording Error", `Could not start recording: ${e.message}`);
       setStatusMsg("Tap the mic and speak naturally.");
     }
   };
@@ -402,11 +456,21 @@ export default function TranslateScreen({ navigation }) {
   // Stop recording → STT → enhanced AI rewrite
   const stopRecording = async () => {
     try {
-      if (!recordingRef) return;
+      console.log('Stopping recording in TranslateScreen...');
+      
+      if (!recordingRef) {
+        console.log('No recording to stop in TranslateScreen');
+        return;
+      }
+      
       setIsRecording(false);
       setIsProcessing(true);
+      console.log('Recording state updated, stopping...');
+      
       await recordingRef.stopAndUnloadAsync();
       const uri = recordingRef.getURI();
+      console.log('Recording stopped, URI:', uri);
+      
       setRecordingRef(null);
       setStatusMsg("Let me think about what you said...");
 
@@ -442,7 +506,9 @@ export default function TranslateScreen({ navigation }) {
       }
     } catch (e) {
       console.error("Recording/transcription error:", e);
-      Alert.alert("Error", e.message);
+      setIsRecording(false);
+      setRecordingRef(null);
+      Alert.alert("Error", `Could not process your voice: ${e.message}`);
       setStatusMsg("Tap the microphone and say something!");
     } finally {
       setIsProcessing(false);
