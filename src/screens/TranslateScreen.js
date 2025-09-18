@@ -13,17 +13,20 @@ import {
 import * as Speech from "expo-speech";
 import { Audio } from "expo-av";
 import Constants from "expo-constants";
-import { getUserProfile } from '../utils/personalization';
+import { getUserProfile } from "../utils/personalization";
 
-// API keys from app.json / .env
-const GOOGLE_STT_API_KEY = Constants?.expoConfig?.extra?.GOOGLE_STT_API_KEY;
-const OPENAI_API_KEY = Constants?.expoConfig?.extra?.OPENAI_API_KEY;
+// 🔐 API keys from app.config.js (.env → app.config.js → extra)
+const { OPENAI_API_KEY, GOOGLE_STT_API_KEY } = Constants.expoConfig?.extra ?? {};
 
-// Check if API keys are configured
-if (!OPENAI_API_KEY || OPENAI_API_KEY === 'YOUR_OPENAI_API_KEY_HERE') {
-  console.warn('⚠️ OpenAI API key not configured. Please add your API key to app.json');
-} else {
-  console.log('✅ OpenAI API key found:', OPENAI_API_KEY.substring(0, 10) + '...');
+if (!OPENAI_API_KEY) {
+  console.warn(
+    "OPENAI_API_KEY is missing. Set it in your .env and app.config.js (extra.OPENAI_API_KEY)."
+  );
+}
+if (!GOOGLE_STT_API_KEY) {
+  console.warn(
+    "GOOGLE_STT_API_KEY is missing. Set it in your .env and app.config.js (extra.GOOGLE_STT_API_KEY)."
+  );
 }
 
 // Mic icons
@@ -44,6 +47,12 @@ function blobToBase64(blob) {
 
 // Google STT
 async function transcribeAudio(uri) {
+  if (!GOOGLE_STT_API_KEY) {
+    throw new Error(
+      "Google STT key missing. Add GOOGLE_STT_API_KEY to your .env and app.config.js."
+    );
+  }
+
   const res = await fetch(uri);
   const blob = await res.blob();
   if (blob.size < 1000) throw new Error("No speech detected");
@@ -59,7 +68,9 @@ async function transcribeAudio(uri) {
         config: {
           languageCode: "en-US",
           enableAutomaticPunctuation: true,
+          // Works well for short utterances; you can also use 'phone_call' or 'command_and_search'
           model: "latest_short",
+          // useEnhanced: true, // (optional) legacy flag; latest_* are already enhanced
         },
         audio: { content: base64 },
       }),
@@ -77,12 +88,14 @@ async function transcribeAudio(uri) {
 
 // Enhanced OpenAI rewrite with personalization
 async function getRewrites(transcript, userProfile = null) {
-  // Get user profile for personalization
-  const profile = userProfile || await getUserProfile();
-  
-  // Create personalized system prompt based on user's needs
+  if (!OPENAI_API_KEY) {
+    // Fall back immediately if key missing; caller will catch and use fallback
+    throw new Error("OpenAI API key is missing");
+  }
+
+  const profile = userProfile || (await getUserProfile());
   const systemPrompt = createPersonalizedSystemPrompt(profile);
-  
+
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -92,49 +105,40 @@ async function getRewrites(transcript, userProfile = null) {
     body: JSON.stringify({
       model: "gpt-4o-mini",
       messages: [
+        { role: "system", content: systemPrompt },
         {
-          role: "system",
-          content: systemPrompt,
-        },
-        { 
-          role: "user", 
-          content: `Please rewrite this unclear message into COMPLETE, LONGER sentences that include all the user's ideas. Make it clear and autism-friendly with 10-15 words per sentence: "${transcript}"` 
+          role: "user",
+          content:
+            `Please rewrite this unclear message into COMPLETE, LONGER sentences that include all the user's ideas. ` +
+            `Make it clear and autism-friendly with 10-15 words per sentence: "${transcript}"`,
         },
       ],
-      temperature: 0.3, // Lower temperature for more consistent results
-      max_tokens: 200, // Increased for better explanations
+      temperature: 0.3,
+      max_tokens: 200,
     }),
   });
 
   const data = await res.json();
-  
-  // Check for API errors
+
   if (!res.ok) {
-    console.error('OpenAI API Error Status:', res.status);
-    console.error('OpenAI API Error Response:', data);
-    console.error('API Key being used:', OPENAI_API_KEY ? OPENAI_API_KEY.substring(0, 10) + '...' : 'NOT FOUND');
-    
-    if (res.status === 401) {
-      throw new Error(`OpenAI API key is invalid. Status: ${res.status}. Please check your API key in app.json. Error: ${data.error?.message || 'Unauthorized'}`);
-    } else if (res.status === 429) {
-      throw new Error('OpenAI API rate limit exceeded. Please try again later.');
-    } else {
-      throw new Error(`OpenAI API error (${res.status}): ${data.error?.message || 'Unknown error'}`);
-    }
+    console.error("OpenAI API Error Status:", res.status);
+    console.error("OpenAI API Error Response:", data);
+    throw new Error(
+      data?.error?.message || `OpenAI API error (status ${res.status})`
+    );
   }
-  
-  // Check if we have valid response data
-  if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-    console.error('Invalid OpenAI response structure:', data);
-    throw new Error('Invalid response from OpenAI API');
+
+  if (!data.choices?.[0]?.message) {
+    console.error("Invalid OpenAI response structure:", data);
+    throw new Error("Invalid response from OpenAI API");
   }
-  
+
   try {
     const response = data.choices[0].message.content;
     return parseAIResponse(response, transcript);
   } catch (error) {
-    console.error('OpenAI response parsing error:', error);
-    throw new Error('Failed to parse OpenAI response');
+    console.error("OpenAI response parsing error:", error);
+    throw new Error("Failed to parse OpenAI response");
   }
 }
 
@@ -161,35 +165,37 @@ AUTISM-FRIENDLY REWRITING EXAMPLES:
 - "Go store need milk" → ["I need to go to the store to buy some milk", "Can we go to the store because I need to get milk"]
 - "I want pizza pepperoni" → ["I want to order a pepperoni pizza for dinner", "Can I have a pepperoni pizza with pepperoni on top"]`;
 
-  // Add personalization based on user profile
   let personalizedPrompt = basePrompt;
-  
+
   if (profile) {
-    // Age-appropriate language
     if (profile.age <= 10) {
-      personalizedPrompt += "\n\nFOR YOUNG CHILD (age 7-10): Use very simple words, short sentences (max 6 words), and concrete examples.";
+      personalizedPrompt +=
+        "\n\nFOR YOUNG CHILD (age 7-10): Use very simple words, short sentences (max 6 words), and concrete examples.";
     } else if (profile.age <= 16) {
-      personalizedPrompt += "\n\nFOR TEENAGER (age 11-16): Use clear, direct language appropriate for teens.";
+      personalizedPrompt +=
+        "\n\nFOR TEENAGER (age 11-16): Use clear, direct language appropriate for teens.";
     } else {
-      personalizedPrompt += "\n\nFOR YOUNG ADULT (age 17-25): Use mature but clear language.";
+      personalizedPrompt +=
+        "\n\nFOR YOUNG ADULT (age 17-25): Use mature but clear language.";
     }
 
-    // Communication challenges
-    if (profile.challenges && profile.challenges.includes('words')) {
-      personalizedPrompt += "\n\nUSER STRUGGLES WITH: Finding the right words - provide very clear, simple alternatives.";
+    if (profile.challenges?.includes("words")) {
+      personalizedPrompt +=
+        "\n\nUSER STRUGGLES WITH: Finding the right words - provide very clear, simple alternatives.";
     }
-    
-    if (profile.challenges && profile.challenges.includes('nervous')) {
-      personalizedPrompt += "\n\nUSER FEELS: Nervous about communication - make options very confident and clear.";
+    if (profile.challenges?.includes("nervous")) {
+      personalizedPrompt +=
+        "\n\nUSER FEELS: Nervous about communication - make options very confident and clear.";
     }
-
-    // Learning style
-    if (profile.learningStyle === 'visual') {
-      personalizedPrompt += "\n\nUSER LEARNS BEST: Visually - include descriptive words that paint a picture.";
+    if (profile.learningStyle === "visual") {
+      personalizedPrompt +=
+        "\n\nUSER LEARNS BEST: Visually - include descriptive words that paint a picture.";
     }
   }
 
-  personalizedPrompt += `\n\nMORE EXAMPLES:
+  personalizedPrompt += `
+
+MORE EXAMPLES:
 - "I'm hungry" → ["I want food", "Can I eat something?", "I need to eat"]
 - "That's not fair" → ["I don't like this", "This is wrong", "I want it to be different"]
 - "I'm tired" → ["I want to rest", "I need to sleep", "I'm sleepy"]
@@ -204,89 +210,110 @@ IMPORTANT: The user has autism. Make sentences SHORTER and SIMPLER. Avoid comple
 // Parse AI response and handle different formats
 function parseAIResponse(response, originalTranscript) {
   try {
-    // Try to parse as JSON first
     const parsed = JSON.parse(response);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      const validOptions = parsed.filter(option => 
-        option && 
-        option.trim().length > 0 && 
-        option.trim() !== originalTranscript.trim() // Don't return the same as input
+      const validOptions = parsed.filter(
+        (option) =>
+          option &&
+          option.trim().length > 0 &&
+          option.trim() !== originalTranscript.trim()
       );
-      
-      // If we have valid rewrites, return only the first 2
       if (validOptions.length > 0) {
-        return validOptions.slice(0, 2); // Only return first 2 options
+        return validOptions.slice(0, 2);
       }
     }
-  } catch (e) {
-    // If not JSON, try to extract options from text
-    const lines = response.split('\n').filter(line => line.trim());
+  } catch (_) {
+    // Not JSON; parse lines
+    const lines = response.split("\n").filter((line) => line.trim());
     const options = [];
-    
+
     for (const line of lines) {
-      // Look for quoted text or numbered options
-      const match = line.match(/"([^"]+)"/) || line.match(/^\d+\.\s*(.+)$/) || line.match(/^-\s*(.+)$/);
+      const match =
+        line.match(/"([^"]+)"/) ||
+        line.match(/^\d+\.\s*(.+)$/) ||
+        line.match(/^-\s*(.+)$/);
       if (match) {
-        const option = match[1].trim();
-        // Only add if it's different from the original
+        const option = (match[1] || match[0].replace(/^\d+\.|- /, "")).trim();
         if (option !== originalTranscript.trim()) {
           options.push(option);
         }
       }
     }
-    
-    if (options.length > 0) {
-      return options.slice(0, 2); // Only return first 2 options
-    }
+    if (options.length > 0) return options.slice(0, 2);
   }
-  
-  // Fallback: create simple rewrites if AI fails
   return createFallbackRewrites(originalTranscript);
 }
 
 // Create simple fallback rewrites when AI fails
 function createFallbackRewrites(transcript) {
-  const words = transcript.toLowerCase().split(/\s+/).filter(word => word.length > 0);
-  
-  // Food-related patterns
-  if (words.includes('hamburger') || words.includes('hanburgur') || words.includes('burger')) {
-    if (words.includes('cheese')) {
-      return ["Hello, I want to order a cheeseburger with cheese on it", "Can I please have a cheeseburger with cheese for my meal?"];
-    }
-    return ["Hello, I want to order a hamburger for my meal", "Can I please have a hamburger to eat?"];
-  }
-  
-  if (words.includes('pizza')) {
-    if (words.includes('pepperoni')) {
-      return ["I want to order a pepperoni pizza for dinner tonight", "Can I please have a pepperoni pizza with pepperoni on top?"];
-    }
-    return ["I want to order a pizza for my meal", "Can I please have a pizza to eat?"];
-  }
-  
-  if (words.includes('hungry') || words.includes('food') || words.includes('eat')) {
-    return ["I am hungry and I want some food to eat right now", "I need food because I am feeling very hungry at this moment"];
-  }
-  
-  if (words.includes('tired') || words.includes('sleep')) {
-    return ["I am tired and I want to rest for a while", "I need to sleep because I am feeling very tired right now"];
-  }
-  
-  if (words.includes('help')) {
-    return ["I need help with something and I do not know what to do", "Can you please help me because I need assistance right now?"];
-  }
-  
-  if (words.includes('bathroom') || words.includes('toilet')) {
-    return ["Where is the bathroom because I need to use it?", "I need to find the bathroom so I can use it"];
-  }
-  
-  if (words.includes('friends') || words.includes('friend')) {
-    return ["I want to talk to my friends but I need help with communication", "I need help talking to my friends because I cannot speak clearly"];
-  }
-  
-  // Generic fallback
-  return [`I want to say something but I need help: ${transcript}`, `Can you help me understand what I am trying to say: ${transcript}`];
-}
+  const words = transcript.toLowerCase().split(/\s+/).filter(Boolean);
 
+  if (words.includes("hamburger") || words.includes("hanburgur") || words.includes("burger")) {
+    if (words.includes("cheese")) {
+      return [
+        "Hello, I want to order a cheeseburger with cheese on it",
+        "Can I please have a cheeseburger with cheese for my meal?",
+      ];
+    }
+    return [
+      "Hello, I want to order a hamburger for my meal",
+      "Can I please have a hamburger to eat?",
+    ];
+  }
+
+  if (words.includes("pizza")) {
+    if (words.includes("pepperoni")) {
+      return [
+        "I want to order a pepperoni pizza for dinner tonight",
+        "Can I please have a pepperoni pizza with pepperoni on top?",
+      ];
+    }
+    return [
+      "I want to order a pizza for my meal",
+      "Can I please have a pizza to eat?",
+    ];
+  }
+
+  if (words.includes("hungry") || words.includes("food") || words.includes("eat")) {
+    return [
+      "I am hungry and I want some food to eat right now",
+      "I need food because I am feeling very hungry at this moment",
+    ];
+  }
+
+  if (words.includes("tired") || words.includes("sleep")) {
+    return [
+      "I am tired and I want to rest for a while",
+      "I need to sleep because I am feeling very tired right now",
+    ];
+  }
+
+  if (words.includes("help")) {
+    return [
+      "I need help with something and I do not know what to do",
+      "Can you please help me because I need assistance right now?",
+    ];
+  }
+
+  if (words.includes("bathroom") || words.includes("toilet")) {
+    return [
+      "Where is the bathroom because I need to use it?",
+      "I need to find the bathroom so I can use it",
+    ];
+  }
+
+  if (words.includes("friends") || words.includes("friend")) {
+    return [
+      "I want to talk to my friends but I need help with communication",
+      "I need help talking to my friends because I cannot speak clearly",
+    ];
+  }
+
+  return [
+    `I want to say something but I need help: ${transcript}`,
+    `Can you help me understand what I am trying to say: ${transcript}`,
+  ];
+}
 
 // Log feedback to backend
 async function sendFeedback(payload) {
@@ -315,22 +342,21 @@ export default function TranslateScreen({ navigation }) {
 
   // Load user profile and fade in animation
   useEffect(() => {
-    loadUserProfile();
+    (async () => {
+      try {
+        const profile = await getUserProfile();
+        setUserProfile(profile);
+      } catch (error) {
+        console.error("Error loading user profile:", error);
+      }
+    })();
+
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 600,
       useNativeDriver: true,
     }).start();
   }, []);
-
-  const loadUserProfile = async () => {
-    try {
-      const profile = await getUserProfile();
-      setUserProfile(profile);
-    } catch (error) {
-      console.error('Error loading user profile:', error);
-    }
-  };
 
   // Animate pulse on recording
   useEffect(() => {
@@ -395,36 +421,27 @@ export default function TranslateScreen({ navigation }) {
         setOptions(rewrites);
         setStatusMsg("Pick the message that sounds right to you!");
       } catch (aiError) {
-        console.error('AI rewrite error:', aiError);
-        
-        // Show user-friendly error message
-        if (aiError.message.includes('API key')) {
+        console.error("AI rewrite error:", aiError);
+
+        // User-friendly error message
+        if (String(aiError.message).toLowerCase().includes("key")) {
           Alert.alert(
-            "API Key Error", 
-            "Please add your OpenAI API key to app.json file. The translator will use fallback options for now.",
-            [{ text: "OK" }]
+            "API Key Error",
+            "Your OpenAI API key is missing or invalid. Using fallback options for now."
           );
-        } else if (aiError.message.includes('rate limit')) {
-          Alert.alert(
-            "Rate Limit", 
-            "Too many requests. Please wait a moment and try again.",
-            [{ text: "OK" }]
-          );
+        } else if (String(aiError.message).toLowerCase().includes("rate limit")) {
+          Alert.alert("Rate Limit", "Too many requests. Please wait and try again.");
         } else {
-          Alert.alert(
-            "AI Error", 
-            "The AI translator is having issues. Using fallback options.",
-            [{ text: "OK" }]
-          );
+          Alert.alert("AI Error", "The AI translator had an issue. Using fallback options.");
         }
-        
-        // Use fallback rewrites
+
+        // Fallback rewrites
         const fallbackRewrites = createFallbackRewrites(raw);
         setOptions(fallbackRewrites);
         setStatusMsg("Here are some basic options (AI unavailable):");
       }
     } catch (e) {
-      console.error('Recording/transcription error:', e);
+      console.error("Recording/transcription error:", e);
       Alert.alert("Error", e.message);
       setStatusMsg("Tap the microphone and say something!");
     } finally {
@@ -454,7 +471,6 @@ export default function TranslateScreen({ navigation }) {
       setOptions([]);
       setStatusMsg("Great job! Tap the microphone and say something!");
     } else {
-      // ❌ regenerate new rewrites with enhanced AI
       setStatusMsg("Let me try different ways to say that...");
       try {
         const rewrites = await getRewrites(transcript, userProfile);
@@ -470,8 +486,8 @@ export default function TranslateScreen({ navigation }) {
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton} 
+        <TouchableOpacity
+          style={styles.backButton}
           onPress={() => navigation.goBack()}
           accessibilityLabel="Go back"
         >
@@ -491,12 +507,12 @@ export default function TranslateScreen({ navigation }) {
             disabled={isProcessing}
           >
             <Image
-              source={isRecording ? require('../../assets/mic_recording.png') : require('../../assets/mic.png')}
+              source={isRecording ? micImages.recording : micImages.inactive}
               style={styles.micIcon}
             />
           </TouchableOpacity>
         </Animated.View>
-        
+
         {/* Processing indicator */}
         {isProcessing && (
           <View style={styles.processingIndicator}>
@@ -510,13 +526,11 @@ export default function TranslateScreen({ navigation }) {
         {options.length > 0 && (
           <View style={styles.clearMessageCard}>
             <Text style={styles.clearMessageLabel}>Clear Message</Text>
-            
-            {/* All options displayed together in one unified message */}
+
+            {/* Unified message (both options) */}
             <View style={styles.unifiedMessageContainer}>
-              <Text style={styles.unifiedMessageText}>
-                {options.join(' • ')}
-              </Text>
-              <View style={styles.unifiedActionsRow}>
+              <Text style={styles.unifiedMessageText}>{options.join(" • ")}</Text>
+              <View className="unifiedActionsRow" style={styles.unifiedActionsRow}>
                 <TouchableOpacity
                   style={[styles.actionBtn, { backgroundColor: "#10b981" }]}
                   onPress={() => handleFeedback("correct", options[0])}
@@ -531,7 +545,7 @@ export default function TranslateScreen({ navigation }) {
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.actionBtn, { backgroundColor: "#3b82f6" }]}
-                  onPress={() => Speech.speak(options.join(' '))}
+                  onPress={() => Speech.speak(options.join(" "))}
                 >
                   <Text style={styles.actionBtnText}>Listen</Text>
                 </TouchableOpacity>
@@ -568,9 +582,9 @@ const styles = StyleSheet.create({
   backButton: {
     paddingVertical: 8,
     paddingHorizontal: 16,
-    backgroundColor: '#ff6b6b',
+    backgroundColor: "#ff6b6b",
     borderRadius: 20,
-    shadowColor: '#ff6b6b',
+    shadowColor: "#ff6b6b",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
@@ -578,12 +592,19 @@ const styles = StyleSheet.create({
     marginRight: 16,
   },
   backButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   title: { fontSize: 36, fontWeight: "900", color: "#d32f2f", flex: 1 },
-  subtitle: { fontSize: 24, color: "#e91e63", paddingHorizontal: 20, marginTop: 6, marginBottom: 14, fontWeight: "600" },
+  subtitle: {
+    fontSize: 24,
+    color: "#e91e63",
+    paddingHorizontal: 20,
+    marginTop: 6,
+    marginBottom: 14,
+    fontWeight: "600",
+  },
   micWrap: { alignItems: "center", marginTop: 8, marginBottom: 6 },
   micBtn: {
     alignItems: "center",
@@ -606,8 +627,7 @@ const styles = StyleSheet.create({
   },
   cardLabel: { fontSize: 20, color: "#e91e63", marginBottom: 8, fontWeight: "700" },
   cardText: { fontSize: 18, color: "#d32f2f", lineHeight: 24, fontWeight: "500" },
-  
-  // Clear message styles - much bigger
+
   clearMessageCard: {
     backgroundColor: "#ffffff",
     borderRadius: 24,
@@ -621,19 +641,14 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: "#ffebee",
   },
-  clearMessageLabel: { 
-    fontSize: 28, 
-    color: "#d32f2f", 
-    marginBottom: 16, 
+  clearMessageLabel: {
+    fontSize: 28,
+    color: "#d32f2f",
+    marginBottom: 16,
     fontWeight: "800",
-    textAlign: "center"
+    textAlign: "center",
   },
-  clearMessageOption: { 
-    marginBottom: 20,
-    alignItems: "center"
-  },
-  
-  // New unified message container styles
+
   unifiedMessageContainer: {
     backgroundColor: "#fafafa",
     borderRadius: 16,
@@ -655,48 +670,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
   },
-  clearMessageText: { 
-    fontSize: 32, 
-    color: "#d32f2f", 
-    lineHeight: 40, 
-    fontWeight: "700",
-    textAlign: "center",
-    marginBottom: 16,
-    paddingHorizontal: 16
-  },
-  optionRow: { marginBottom: 12 },
-  actionsRow: { flexDirection: "row", marginTop: 8 },
-  actionBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 16,
-    marginHorizontal: 6,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 4,
-    minWidth: 80,
-    justifyContent: "center",
-  },
-  actionBtnText: { color: "white", fontWeight: "700", fontSize: 16 },
-  
-  // Processing indicator styles
+
   processingIndicator: {
     marginTop: 12,
     paddingHorizontal: 16,
     paddingVertical: 8,
-    backgroundColor: '#ffebee',
+    backgroundColor: "#ffebee",
     borderRadius: 16,
     borderWidth: 2,
-    borderColor: '#ffcdd2',
+    borderColor: "#ffcdd2",
   },
   processingText: {
     fontSize: 16,
-    color: '#d32f2f',
-    fontWeight: '600',
-    textAlign: 'center',
+    color: "#d32f2f",
+    fontWeight: "600",
+    textAlign: "center",
   },
 });
