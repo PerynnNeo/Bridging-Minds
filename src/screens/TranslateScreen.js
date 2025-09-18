@@ -157,7 +157,9 @@ CRITICAL RULES FOR AUTISM-FRIENDLY COMMUNICATION:
 6. Use DIRECT language ("I want" not "I would like")
 7. Make it EASY to say out loud - simple words, clear structure
 8. Make it EASIER to understand, not harder
-9. Return EXACTLY 1 sentence as a string (not an array)
+9. Return EXACTLY 1 sentence as a string (NOT an array, NOT multiple sentences)
+
+IMPORTANT: You must return ONLY ONE sentence. Do not return multiple options, arrays, bullet points, or multiple sentences. Just return the single rewritten sentence as plain text. NO bullet points (•) or separators.
 
 AUTISM-FRIENDLY REWRITING EXAMPLES:
 - "Hello, I want hanburgur cheese one" → "I want to order a cheeseburger with cheese"
@@ -205,13 +207,16 @@ MORE EXAMPLES:
 - "Where is bathroom" → "I need to find the bathroom so I can use it"
 - "I want fries hamburger" → "I want to order fries and a hamburger for my meal"
 
-CRITICAL: Always provide ONE clear, simple sentence that is easy to say out loud:
+CRITICAL: Always provide EXACTLY ONE clear, simple sentence that is easy to say out loud:
 - Use direct language (I want/need/have)
 - Keep it simple and clear
 - Make it easy for someone with autism to speak
 - Focus on the main idea only
+- Return ONLY the sentence, no explanations or multiple options
 
-IMPORTANT: The user has autism. Make sentences SHORTER and SIMPLER. Avoid complex words and phrases. Focus on the main idea only.`;
+IMPORTANT: The user has autism. Make sentences SHORTER and SIMPLER. Avoid complex words and phrases. Focus on the main idea only. Return ONLY ONE sentence as plain text.
+
+FINAL REMINDER: Return exactly ONE sentence. No bullet points (•), no multiple options, no arrays. Just one clear sentence that the user can say out loud.`;
 
   return personalizedPrompt;
 }
@@ -222,6 +227,7 @@ function parseAIResponse(response, originalTranscript) {
     // Try to parse as JSON first (in case AI still returns array)
     const parsed = JSON.parse(response);
     if (Array.isArray(parsed) && parsed.length > 0) {
+      // If AI returns array, take only the first valid option
       const validOption = parsed.find(
         (option) =>
           option &&
@@ -238,8 +244,17 @@ function parseAIResponse(response, originalTranscript) {
   } catch (_) {
     // Not JSON; treat as plain text
     const cleanResponse = response.trim();
-    if (cleanResponse && cleanResponse !== originalTranscript.trim()) {
-      return [cleanResponse];
+    
+    // Split on bullet points and take only the first sentence
+    const sentences = cleanResponse.split(/[•·]/);
+    const firstSentence = sentences[0]
+      .replace(/^[-•]\s*/, '') // Remove bullet points
+      .replace(/^\d+\.\s*/, '') // Remove numbers
+      .replace(/^["']|["']$/g, '') // Remove quotes
+      .trim();
+    
+    if (firstSentence && firstSentence !== originalTranscript.trim()) {
+      return [firstSentence];
     }
   }
   
@@ -574,10 +589,10 @@ export default function TranslateScreen({ navigation }) {
           Alert.alert("AI Error", "The AI translator had an issue. Using fallback options.");
         }
 
-        // Fallback rewrites
-        const fallbackRewrites = createFallbackRewrites(raw);
-        setOptions(fallbackRewrites);
-        setStatusMsg("Here are some basic options (AI unavailable):");
+        // Fallback single sentence
+        const fallbackSentence = createFallbackSingleSentence(raw);
+        setOptions([fallbackSentence]);
+        setStatusMsg("Here's a basic message (AI unavailable):");
       }
     } catch (e) {
       console.error("Recording/transcription error:", e);
