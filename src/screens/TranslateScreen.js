@@ -146,26 +146,26 @@ async function getRewrites(transcript, userProfile = null) {
 
 // Create personalized system prompt based on user profile
 function createPersonalizedSystemPrompt(profile) {
-  const basePrompt = `You are a communication assistant helping someone with autism express themselves more clearly. Your job is to COMPLETELY REWRITE their message into EXACTLY 2 clear, autism-friendly options.
+  const basePrompt = `You are a communication assistant helping someone with autism express themselves more clearly. Your job is to COMPLETELY REWRITE their message into ONE clear, simple sentence that is easy for them to say out loud.
 
 CRITICAL RULES FOR AUTISM-FRIENDLY COMMUNICATION:
 1. DO NOT just add punctuation - COMPLETELY REWRITE the sentence
 2. Fix grammar, word order, and missing words
-3. Create COMPLETE, LONGER sentences (10-15 words) that include all the user's ideas
+3. Create ONE COMPLETE, CLEAR sentence (8-12 words) that includes all the user's ideas
 4. Use CONCRETE words, avoid abstract concepts
 5. NO idioms, metaphors, or slang
 6. Use DIRECT language ("I want" not "I would like")
-7. Combine all ideas into ONE complete sentence per option
+7. Make it EASY to say out loud - simple words, clear structure
 8. Make it EASIER to understand, not harder
-9. Return EXACTLY 2 options as JSON array: ["option1", "option2"]
+9. Return EXACTLY 1 sentence as a string (not an array)
 
 AUTISM-FRIENDLY REWRITING EXAMPLES:
-- "Hello, I want hanburgur cheese one" → ["Hello, I want to order a cheeseburger with cheese", "Can I please have a cheeseburger with cheese on it?"]
-- "Hello, I friends. Cannot speak properly to them my friends." → ["Hello, I want to talk to my friends but I cannot speak properly", "I need help talking to my friends because I cannot speak clearly"]
-- "I hungry food want" → ["I am hungry and I want some food to eat", "I need food because I am feeling very hungry right now"]
-- "Not understand what you saying" → ["I do not understand what you are saying to me", "Can you please explain what you are saying because I do not understand"]
-- "Go store need milk" → ["I need to go to the store to buy some milk", "Can we go to the store because I need to get milk"]
-- "I want pizza pepperoni" → ["I want to order a pepperoni pizza for dinner", "Can I have a pepperoni pizza with pepperoni on top"]`;
+- "Hello, I want hanburgur cheese one" → "I want to order a cheeseburger with cheese"
+- "Hello, I friends. Cannot speak properly to them my friends." → "I want to talk to my friends but I have trouble speaking clearly"
+- "I hungry food want" → "I am hungry and I need food to eat"
+- "Not understand what you saying" → "I do not understand what you are saying"
+- "Go store need milk" → "I need to go to the store to buy milk"
+- "I want pizza pepperoni" → "I want to order a pepperoni pizza for dinner"`;
 
   let personalizedPrompt = basePrompt;
 
@@ -198,11 +198,18 @@ AUTISM-FRIENDLY REWRITING EXAMPLES:
   personalizedPrompt += `
 
 MORE EXAMPLES:
-- "I'm hungry" → ["I want food", "Can I eat something?", "I need to eat"]
-- "That's not fair" → ["I don't like this", "This is wrong", "I want it to be different"]
-- "I'm tired" → ["I want to rest", "I need to sleep", "I'm sleepy"]
-- "Help me please" → ["I need help", "Can you help me?", "Please help"]
-- "Where is bathroom" → ["Where is the bathroom?", "I need to find the bathroom", "Can you show me the bathroom?"]
+- "I'm hungry" → "I am hungry and I need food to eat"
+- "That's not fair" → "I do not like this because it is not fair"
+- "I'm tired" → "I am tired and I want to rest for a while"
+- "Help me please" → "I need help with this task right now"
+- "Where is bathroom" → "I need to find the bathroom so I can use it"
+- "I want fries hamburger" → "I want to order fries and a hamburger for my meal"
+
+CRITICAL: Always provide ONE clear, simple sentence that is easy to say out loud:
+- Use direct language (I want/need/have)
+- Keep it simple and clear
+- Make it easy for someone with autism to speak
+- Focus on the main idea only
 
 IMPORTANT: The user has autism. Make sentences SHORTER and SIMPLER. Avoid complex words and phrases. Focus on the main idea only.`;
 
@@ -212,53 +219,106 @@ IMPORTANT: The user has autism. Make sentences SHORTER and SIMPLER. Avoid comple
 // Parse AI response and handle different formats
 function parseAIResponse(response, originalTranscript) {
   try {
+    // Try to parse as JSON first (in case AI still returns array)
     const parsed = JSON.parse(response);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      const validOptions = parsed.filter(
+      const validOption = parsed.find(
         (option) =>
           option &&
           option.trim().length > 0 &&
           option.trim() !== originalTranscript.trim()
       );
-      if (validOptions.length > 0) {
-        return validOptions.slice(0, 2);
+      if (validOption) {
+        return [validOption.trim()];
       }
+    } else if (typeof parsed === 'string' && parsed.trim().length > 0) {
+      // Single string response
+      return [parsed.trim()];
     }
   } catch (_) {
-    // Not JSON; parse lines
-    const lines = response.split("\n").filter((line) => line.trim());
-    const options = [];
-
-    for (const line of lines) {
-      const match =
-        line.match(/"([^"]+)"/) ||
-        line.match(/^\d+\.\s*(.+)$/) ||
-        line.match(/^-\s*(.+)$/);
-      if (match) {
-        const option = (match[1] || match[0].replace(/^\d+\.|- /, "")).trim();
-        if (option !== originalTranscript.trim()) {
-          options.push(option);
-        }
-      }
+    // Not JSON; treat as plain text
+    const cleanResponse = response.trim();
+    if (cleanResponse && cleanResponse !== originalTranscript.trim()) {
+      return [cleanResponse];
     }
-    if (options.length > 0) return options.slice(0, 2);
   }
-  return createFallbackRewrites(originalTranscript);
+  
+  // Fallback to single sentence
+  return [createFallbackSingleSentence(originalTranscript)];
 }
 
-// Create simple fallback rewrites when AI fails
+// Create single fallback sentence when AI fails
+function createFallbackSingleSentence(transcript) {
+  const words = transcript.toLowerCase().split(/\s+/).filter(Boolean);
+
+  if (words.includes("hamburger") || words.includes("hanburgur") || words.includes("burger")) {
+    if (words.includes("cheese")) {
+      return "I want to order a cheeseburger with cheese";
+    }
+    if (words.includes("fries") || words.includes("fry")) {
+      return "I want to order a hamburger with fries";
+    }
+    return "I want to order a hamburger";
+  }
+
+  if (words.includes("pizza")) {
+    if (words.includes("pepperoni")) {
+      return "I want to order a pepperoni pizza";
+    }
+    return "I want to order a pizza";
+  }
+
+  if (words.includes("hungry") || words.includes("food") || words.includes("eat")) {
+    return "I am hungry and I need food to eat";
+  }
+
+  if (words.includes("tired") || words.includes("sleep")) {
+    return "I am tired and I want to rest";
+  }
+
+  if (words.includes("help")) {
+    return "I need help with this task";
+  }
+
+  if (words.includes("bathroom") || words.includes("toilet")) {
+    return "I need to find the bathroom";
+  }
+
+  if (words.includes("friends") || words.includes("friend")) {
+    return "I want to talk to my friends";
+  }
+
+  if (words.includes("water") || words.includes("drink")) {
+    return "I am thirsty and I need water";
+  }
+
+  if (words.includes("home") || words.includes("house")) {
+    return "I want to go home";
+  }
+
+  // Generic fallback
+  return `I want to say: ${transcript}`;
+}
+
+// Create simple fallback rewrites when AI fails (legacy function)
 function createFallbackRewrites(transcript) {
   const words = transcript.toLowerCase().split(/\s+/).filter(Boolean);
 
   if (words.includes("hamburger") || words.includes("hanburgur") || words.includes("burger")) {
     if (words.includes("cheese")) {
       return [
-        "Hello, I want to order a cheeseburger with cheese on it",
-        "Can I please have a cheeseburger with cheese for my meal?",
+        "I want to order a cheeseburger with cheese on it",
+        "Can I please have a cheeseburger with extra cheese?",
+      ];
+    }
+    if (words.includes("fries") || words.includes("fry")) {
+      return [
+        "I want to order a hamburger with fries for my meal",
+        "Can I please have a hamburger and some fries to eat?",
       ];
     }
     return [
-      "Hello, I want to order a hamburger for my meal",
+      "I want to order a hamburger for my meal",
       "Can I please have a hamburger to eat?",
     ];
   }
@@ -267,7 +327,7 @@ function createFallbackRewrites(transcript) {
     if (words.includes("pepperoni")) {
       return [
         "I want to order a pepperoni pizza for dinner tonight",
-        "Can I please have a pepperoni pizza with pepperoni on top?",
+        "Can I please have a pepperoni pizza with lots of pepperoni?",
       ];
     }
     return [
@@ -278,15 +338,15 @@ function createFallbackRewrites(transcript) {
 
   if (words.includes("hungry") || words.includes("food") || words.includes("eat")) {
     return [
-      "I am hungry and I want some food to eat right now",
-      "I need food because I am feeling very hungry at this moment",
+      "I am hungry and I need food to eat right now",
+      "Can I get something to eat because I am very hungry?",
     ];
   }
 
   if (words.includes("tired") || words.includes("sleep")) {
     return [
       "I am tired and I want to rest for a while",
-      "I need to sleep because I am feeling very tired right now",
+      "Can I take a break because I am feeling very tired?",
     ];
   }
 
@@ -299,21 +359,36 @@ function createFallbackRewrites(transcript) {
 
   if (words.includes("bathroom") || words.includes("toilet")) {
     return [
-      "Where is the bathroom because I need to use it?",
       "I need to find the bathroom so I can use it",
+      "Can you show me where the bathroom is located?",
     ];
   }
 
   if (words.includes("friends") || words.includes("friend")) {
     return [
       "I want to talk to my friends but I need help with communication",
-      "I need help talking to my friends because I cannot speak clearly",
+      "Can you help me talk to my friends because I have trouble speaking?",
     ];
   }
 
+  if (words.includes("water") || words.includes("drink")) {
+    return [
+      "I am thirsty and I need water to drink",
+      "Can I please have some water because I am thirsty?",
+    ];
+  }
+
+  if (words.includes("home") || words.includes("house")) {
+    return [
+      "I want to go home because I am done here",
+      "Can we go home now because I want to leave?",
+    ];
+  }
+
+  // Generic fallback with better variety
   return [
-    `I want to say something but I need help: ${transcript}`,
-    `Can you help me understand what I am trying to say: ${transcript}`,
+    `I want to say: ${transcript}`,
+    `Can you help me say this better: ${transcript}?`,
   ];
 }
 
@@ -593,9 +668,9 @@ export default function TranslateScreen({ navigation }) {
           <View style={styles.clearMessageCard}>
             <Text style={styles.clearMessageLabel}>Clear Message</Text>
 
-            {/* Unified message (both options) */}
+            {/* Single clear message */}
             <View style={styles.unifiedMessageContainer}>
-              <Text style={styles.unifiedMessageText}>{options.join(" • ")}</Text>
+              <Text style={styles.unifiedMessageText}>{options[0]}</Text>
               <View className="unifiedActionsRow" style={styles.unifiedActionsRow}>
                 <TouchableOpacity
                   style={[styles.actionBtn, { backgroundColor: "#10b981" }]}
@@ -611,7 +686,7 @@ export default function TranslateScreen({ navigation }) {
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.actionBtn, { backgroundColor: "#3b82f6" }]}
-                  onPress={() => Speech.speak(options.join(" "))}
+                  onPress={() => Speech.speak(options[0])}
                 >
                   <Text style={styles.actionBtnText}>Listen</Text>
                 </TouchableOpacity>
