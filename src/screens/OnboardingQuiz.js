@@ -32,7 +32,7 @@ function blobToBase64(blob) {
   });
 }
 
-// Google STT Integration
+// Google STT Integration for Expo Audio
 async function transcribeAudio(uri) {
   try {
     const response = await fetch(uri);
@@ -43,7 +43,18 @@ async function transcribeAudio(uri) {
     }
 
     const base64 = await blobToBase64(blob);
+    return await transcribeWebAudio(base64);
+  } catch (error) {
+    console.error('Transcription error:', error);
+    throw error;
+  }
+}
 
+// Google STT Integration for Web Audio
+async function transcribeWebAudio(base64) {
+  try {
+    console.log('🔤 Sending audio to Google STT...');
+    
     const apiResponse = await fetch(
       `https://speech.googleapis.com/v1/speech:recognize?key=${GOOGLE_STT_API_KEY}`,
       {
@@ -54,6 +65,8 @@ async function transcribeAudio(uri) {
             languageCode: 'en-US',
             enableAutomaticPunctuation: true,
             model: 'latest_short',
+            encoding: 'WEBM_OPUS',
+            sampleRateHertz: 48000,
           },
           audio: { content: base64 },
         }),
@@ -72,9 +85,10 @@ async function transcribeAudio(uri) {
       throw new Error('No speech detected');
     }
 
+    console.log('✅ Google STT transcript:', transcript);
     return transcript;
   } catch (error) {
-    console.error('Transcription error:', error);
+    console.error('Web Audio transcription error:', error);
     throw error;
   }
 }
@@ -134,18 +148,124 @@ export default function OnboardingQuiz({ navigation }) {
     }
   }, [isRecording, pulseAnim]);
 
-  // Start recording
+  // Start recording using native Web Audio API
   const startRecording = async () => {
     try {
-      console.log('🎤 STARTING RECORDING - OnboardingQuiz');
+      console.log('🎤 STARTING RECORDING - OnboardingQuiz (Web Audio API)');
       console.log('Platform:', Platform.OS);
       console.log('User Agent:', navigator.userAgent);
+      
+      // Check if we're in a web environment
+      if (Platform.OS === 'web') {
+        console.log('🌐 Using Web Audio API for web platform');
+        await startWebRecording();
+      } else {
+        console.log('📱 Using Expo Audio for native platform');
+        await startExpoRecording();
+      }
+    } catch (error) {
+      console.error('Recording error:', error);
+      setIsRecording(false);
+      setRecording(null);
+      Alert.alert(
+        'Recording Error', 
+        `Could not start recording: ${error.message}. Please try again or use text input instead.`
+      );
+    }
+  };
+
+  // Web Audio API recording (for mobile browsers)
+  const startWebRecording = async () => {
+    try {
+      console.log('🌐 Starting Web Audio API recording...');
+      
+      // Request microphone access
+      console.log('🔐 Requesting microphone access...');
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 44100
+        } 
+      });
+      console.log('✅ Microphone access granted');
+      
+      // Create MediaRecorder
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'audio/webm;codecs=opus'
+      });
+      
+      const audioChunks = [];
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunks.push(event.data);
+        }
+      };
+      
+      mediaRecorder.onstop = async () => {
+        console.log('🛑 MediaRecorder stopped, processing audio...');
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        
+        // Convert to base64 for Google STT
+        const base64 = await blobToBase64(audioBlob);
+        
+        if (GOOGLE_STT_API_KEY) {
+          console.log('🔤 Transcribing with Google STT...');
+          const transcript = await transcribeWebAudio(base64);
+          console.log('✅ Transcript received:', transcript);
+          handleAnswer(transcript);
+        } else {
+          console.log('🎭 Using mock transcription...');
+          const mockTranscripts = [
+            "I like playing games and drawing",
+            "I have a mom and dad and a sister", 
+            "My favorite thing is playing soccer",
+            "I felt proud when I learned to ride a bike",
+            "I feel happy when I'm with my family"
+          ];
+          const randomTranscript = mockTranscripts[Math.floor(Math.random() * mockTranscripts.length)];
+          handleAnswer(randomTranscript);
+        }
+        
+        // Clean up
+        stream.getTracks().forEach(track => track.stop());
+        URL.revokeObjectURL(audioUrl);
+        setIsProcessing(false);
+      };
+      
+      // Start recording
+      mediaRecorder.start();
+      console.log('✅ Web Audio recording started');
+      
+      // Store the recorder and stream for stopping
+      setRecording({ mediaRecorder, stream });
+      setIsRecording(true);
+      
+      // Auto-stop after 15 seconds
+      setTimeout(() => {
+        if (isRecording) {
+          console.log('⏰ Auto-stopping recording after timeout');
+          stopRecording();
+        }
+      }, 15000);
+      
+    } catch (error) {
+      console.error('Web Audio recording error:', error);
+      throw error;
+    }
+  };
+
+  // Expo Audio recording (for native apps)
+  const startExpoRecording = async () => {
+    try {
+      console.log('📱 Starting Expo Audio recording...');
       
       // Request permissions with better error handling
       console.log('🔐 Requesting microphone permissions...');
       const { status } = await Audio.requestPermissionsAsync();
       console.log('🔐 Permission status:', status);
-      console.log('🔐 Permission granted?', status === 'granted');
       
       if (status !== 'granted') {
         Alert.alert(
@@ -154,7 +274,6 @@ export default function OnboardingQuiz({ navigation }) {
           [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Settings', onPress: () => {
-              // On mobile, this will open app settings
               if (Platform.OS === 'ios') {
                 Linking.openURL('app-settings:');
               } else {
@@ -210,8 +329,6 @@ export default function OnboardingQuiz({ navigation }) {
       setRecording(recordingInstance);
       setIsRecording(true);
       console.log('✅ RECORDING STARTED SUCCESSFULLY!');
-      console.log('✅ isRecording state:', true);
-      console.log('✅ recording instance:', recordingInstance);
 
       // Auto-stop after 15 seconds
       setTimeout(() => {
@@ -221,65 +338,67 @@ export default function OnboardingQuiz({ navigation }) {
         }
       }, 15000);
     } catch (error) {
-      console.error('Recording error:', error);
-      setIsRecording(false);
-      setRecording(null);
-      Alert.alert(
-        'Recording Error', 
-        `Could not start recording: ${error.message}. Please try again or use text input instead.`
-      );
+      console.error('Expo Audio recording error:', error);
+      throw error;
     }
   };
 
   // Stop recording and transcribe
   const stopRecording = async () => {
     try {
-      console.log('Stopping recording...');
+      console.log('🛑 Stopping recording...');
       
       if (!recording) {
-        console.log('No recording to stop');
+        console.log('❌ No recording to stop');
         return;
       }
       
       setIsRecording(false);
       setIsProcessing(true);
-      console.log('Recording state updated, stopping...');
+      console.log('🔄 Recording state updated, stopping...');
       
-      await recording.stopAndUnloadAsync();
-      const uri = recording.getURI();
-      console.log('Recording stopped, URI:', uri);
-      
-      setRecording(null);
-
-      if (GOOGLE_STT_API_KEY) {
-        console.log('Transcribing with Google STT...');
-        const transcript = await transcribeAudio(uri);
-        console.log('Transcript received:', transcript);
-        handleAnswer(transcript);
+      // Check if it's Web Audio or Expo Audio
+      if (Platform.OS === 'web' && recording.mediaRecorder) {
+        console.log('🌐 Stopping Web Audio recording...');
+        recording.mediaRecorder.stop();
+        // The transcription will happen in the onstop event
       } else {
-        console.log('Using mock transcription...');
-        // Mock transcription for testing
-        const mockTranscripts = [
-          "I like playing games and drawing",
-          "I have a mom and dad and a sister",
-          "My favorite thing is playing soccer",
-          "I felt proud when I learned to ride a bike",
-          "I feel happy when I'm with my family"
-        ];
-        const randomTranscript = mockTranscripts[Math.floor(Math.random() * mockTranscripts.length)];
-        console.log('Mock transcript:', randomTranscript);
-        handleAnswer(randomTranscript);
+        console.log('📱 Stopping Expo Audio recording...');
+        await recording.stopAndUnloadAsync();
+        const uri = recording.getURI();
+        console.log('📱 Recording stopped, URI:', uri);
+        
+        setRecording(null);
+
+        if (GOOGLE_STT_API_KEY) {
+          console.log('🔤 Transcribing with Google STT...');
+          const transcript = await transcribeAudio(uri);
+          console.log('✅ Transcript received:', transcript);
+          handleAnswer(transcript);
+        } else {
+          console.log('🎭 Using mock transcription...');
+          const mockTranscripts = [
+            "I like playing games and drawing",
+            "I have a mom and dad and a sister",
+            "My favorite thing is playing soccer",
+            "I felt proud when I learned to ride a bike",
+            "I feel happy when I'm with my family"
+          ];
+          const randomTranscript = mockTranscripts[Math.floor(Math.random() * mockTranscripts.length)];
+          console.log('🎭 Mock transcript:', randomTranscript);
+          handleAnswer(randomTranscript);
+        }
+        setIsProcessing(false);
       }
     } catch (error) {
-      console.error('Stop recording error:', error);
+      console.error('❌ Stop recording error:', error);
       setIsRecording(false);
       setRecording(null);
+      setIsProcessing(false);
       Alert.alert(
         'Error', 
         `Could not process your voice: ${error.message}. Please try typing instead.`
       );
-    } finally {
-      setIsProcessing(false);
     }
   };
 
