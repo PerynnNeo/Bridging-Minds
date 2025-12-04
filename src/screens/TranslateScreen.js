@@ -93,60 +93,26 @@ async function transcribeAudio(uri) {
 }
 
 // Enhanced OpenAI rewrite with personalization
-async function getRewrites(transcript, userProfile = null) {
-  if (!OPENAI_API_KEY) {
-    // Fall back immediately if key missing; caller will catch and use fallback
-    throw new Error("OpenAI API key is missing");
-  }
+// NEW: frontend calls your backend, not OpenAI
+async function getRewrites(transcript, userProfile) {
+  const systemPrompt = createPersonalizedSystemPrompt(userProfile);
 
-  const profile = userProfile || (await getUserProfile());
-  const systemPrompt = createPersonalizedSystemPrompt(profile);
-
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+  const res = await fetch("https://bridging-minds.vercel.app/api/rewrite", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content:
-            `Please rewrite this unclear message into COMPLETE, LONGER sentences that include all the user's ideas. ` +
-            `Make it clear and autism-friendly with 10-15 words per sentence: "${transcript}"`,
-        },
-      ],
-      temperature: 0.3,
-      max_tokens: 200,
-    }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ transcript, systemPrompt }),
   });
 
   const data = await res.json();
 
   if (!res.ok) {
-    console.error("OpenAI API Error Status:", res.status);
-    console.error("OpenAI API Error Response:", data);
-    throw new Error(
-      data?.error?.message || `OpenAI API error (status ${res.status})`
-    );
+    console.error("Backend rewrite error:", data);
+    throw new Error(data.error || "Rewrite request failed");
   }
 
-  if (!data.choices?.[0]?.message) {
-    console.error("Invalid OpenAI response structure:", data);
-    throw new Error("Invalid response from OpenAI API");
-  }
-
-  try {
-    const response = data.choices[0].message.content;
-    return parseAIResponse(response, transcript);
-  } catch (error) {
-    console.error("OpenAI response parsing error:", error);
-    throw new Error("Failed to parse OpenAI response");
-  }
+  return [data.rewrite]; // return as array to match existing code
 }
+
 
 // Create personalized system prompt based on user profile
 function createPersonalizedSystemPrompt(profile) {
