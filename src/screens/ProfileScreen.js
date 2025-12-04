@@ -8,6 +8,7 @@ import {
   Alert,
   BackHandler
 } from 'react-native';
+import { colors, radii } from '../utils/theme';
 import { getQuizResults, clearQuizResults } from '../utils/quizStorage';
 
 export default function ProfileScreen() {
@@ -75,24 +76,51 @@ export default function ProfileScreen() {
   return (
     <View style={styles.container}>
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        {/* Main Content */}
-        <View style={styles.mainContent}>
+        {/* Header */}
+        <View style={styles.header}> 
           <TouchableOpacity onPress={handleTitlePress}>
-            <Text style={styles.text}>Your amazing progress will show up here!</Text>
+            <Text style={styles.headerTitle}>Profile & Personalization</Text>
           </TouchableOpacity>
-          
-          {userProfile && (
-            <View style={styles.userInfo}>
-              <Text style={styles.welcomeText}>
-                Welcome back, {userProfile.name}! 👋
-              </Text>
-              <Text style={styles.ageText}>Age: {userProfile.age}</Text>
-              
-              {/* Quick Reset Button for Testing */}
+          <Text style={styles.headerSubtitle}>Manage voice, avatar, and languages</Text>
+        </View>
+
+        {/* Dashboard */}
+        <View style={styles.dashboardRow}>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Usage</Text>
+            <Text style={styles.cardMetric}>42 min</Text>
+            <Text style={styles.cardHint}>This week</Text>
+          </View>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Conversations</Text>
+            <Text style={styles.cardMetric}>18</Text>
+            <Text style={styles.cardHint}>Completed</Text>
+          </View>
+        </View>
+        <View style={styles.cardWide}>
+          <Text style={styles.cardTitle}>Emotion Analytics</Text>
+          <View style={styles.analyticsRow}>
+            <View style={styles.analyticsPill}><Text style={styles.pillText}>Calm 68%</Text></View>
+            <View style={styles.analyticsPill}><Text style={styles.pillText}>Focused 22%</Text></View>
+            <View style={styles.analyticsPill}><Text style={styles.pillText}>Tense 10%</Text></View>
+          </View>
+        </View>
+
+        {/* User */}
+        <View style={styles.cardWide}>
+          <Text style={styles.sectionTitle}>Personalization</Text>
+          {userProfile ? (
+            <View>
+              <Text style={styles.infoRow}>Name: <Text style={styles.infoValue}>{userProfile.name}</Text></Text>
+              <Text style={styles.infoRow}>Age: <Text style={styles.infoValue}>{userProfile.age}</Text></Text>
+              <Text style={styles.infoRow}>Learning Style: <Text style={styles.infoValue}>{userProfile.learningStyle || '—'}</Text></Text>
+              <Text style={styles.infoRow}>Goals: <Text style={styles.infoValue}>{Array.isArray(userProfile.goals)? userProfile.goals.join(', ') : (userProfile.goals || '—')}</Text></Text>
               <TouchableOpacity style={styles.resetButton} onPress={clearData}>
-                <Text style={styles.resetButtonText}>🔄 Reset Quiz (Testing)</Text>
+                <Text style={styles.resetButtonText}>Reset onboarding</Text>
               </TouchableOpacity>
             </View>
+          ) : (
+            <Text style={styles.infoEmpty}>Complete the onboarding quiz to personalize your experience.</Text>
           )}
         </View>
 
@@ -194,64 +222,130 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff0f5',
+    backgroundColor: colors.background,
   },
   scrollContainer: {
     flex: 1,
   },
-  mainContent: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
+  header: {
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
     paddingTop: 50,
-    paddingBottom: 20,
+    paddingBottom: 16,
+    paddingHorizontal: 20,
   },
-  text: {
-    fontSize: 24,
-    color: '#d32f2f',
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 6,
+  },
+  dashboardRow: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+  card: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.divider,
+  },
+  cardWide: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: 16,
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: colors.divider,
+  },
+  cardTitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
     fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 20,
+  },
+  cardMetric: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    marginTop: 6,
+  },
+  cardHint: {
+    fontSize: 12,
+    color: colors.textTertiary,
+    marginTop: 2,
+  },
+  analyticsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  analyticsPill: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: colors.divider,
+  },
+  pillText: {
+    color: colors.textSecondary,
+    fontWeight: '600',
   },
   userInfo: {
     alignItems: 'center',
   },
-  welcomeText: {
-    fontSize: 20,
-    color: '#e91e63',
-    fontWeight: '600',
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.textPrimary,
     marginBottom: 8,
   },
-  ageText: {
-    fontSize: 16,
-    color: '#d32f2f',
-    fontWeight: '500',
-    marginBottom: 16,
+  infoRow: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 6,
+  },
+  infoValue: {
+    color: colors.textPrimary,
+    fontWeight: '700',
   },
   resetButton: {
-    backgroundColor: '#f59e0b',
+    backgroundColor: colors.surfaceAlt,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 16,
     marginTop: 8,
+    borderWidth: 1,
+    borderColor: colors.divider,
   },
   resetButtonText: {
-    color: 'white',
+    color: colors.textPrimary,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   adminSection: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.surface,
     margin: 16,
     borderRadius: 16,
-    shadowColor: '#ff6b6b',
-    shadowOpacity: 0.1,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 8,
-    elevation: 4,
-    borderWidth: 2,
-    borderColor: '#ffebee',
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: colors.divider,
   },
   adminHeader: {
     flexDirection: 'row',
@@ -259,15 +353,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#ffebee',
+    borderBottomColor: colors.divider,
   },
   adminTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#d32f2f',
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.textPrimary,
   },
   hideButton: {
-    backgroundColor: '#ff6b6b',
+    backgroundColor: colors.accent,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
@@ -283,13 +377,15 @@ const styles = StyleSheet.create({
   debugSection: {
     marginBottom: 20,
     padding: 12,
-    backgroundColor: '#ffebee',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.divider,
   },
   debugSectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#d32f2f',
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.textPrimary,
     marginBottom: 8,
   },
   debugText: {
@@ -309,7 +405,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   clearButton: {
-    backgroundColor: '#ef4444',
+    backgroundColor: colors.danger,
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 20,
@@ -321,7 +417,7 @@ const styles = StyleSheet.create({
   },
   noDataText: {
     fontSize: 16,
-    color: '#6b7280',
+    color: colors.textTertiary,
     textAlign: 'center',
     padding: 20,
     fontStyle: 'italic',

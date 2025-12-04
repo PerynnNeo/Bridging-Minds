@@ -20,6 +20,7 @@ import * as Haptics from 'expo-haptics';
 import { Audio } from 'expo-av';
 import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system';
+import { colors, radii } from '../utils/theme';
 
 const API_KEY = Constants?.expoConfig?.extra?.GOOGLE_STT_API_KEY;
 if (!API_KEY) {
@@ -734,13 +735,19 @@ export default function WordsPracticeScreen({ route, navigation }) {
           onPress={() => navigation.goBack()}
           accessibilityLabel="Go back"
         >
-          <Text style={styles.backButtonText}>← Back</Text>
+          <Text style={styles.backButtonText}>Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Word Practice</Text>
         <View style={styles.statsContainer}>
           <Text style={styles.statsText}>Points: {userStats.points}</Text>
           {userStats.streak > 0 && <Text style={styles.streakText}>{userStats.streak}🔥</Text>}
         </View>
+      </View>
+
+      {/* Top word hero */}
+      <View style={styles.hero}>
+        <Text style={styles.heroWord}>{currentWord.text}</Text>
+        <Text style={styles.heroPhonetic}>{currentWord.phonetic}</Text>
       </View>
 
       <ScrollView
@@ -763,10 +770,10 @@ export default function WordsPracticeScreen({ route, navigation }) {
                 {
                   backgroundColor:
                     currentWord.difficulty === 'easy'
-                      ? '#dcfce7'
+                      ? '#E7F9ED'
                       : currentWord.difficulty === 'medium'
-                      ? '#fef3c7'
-                      : '#fecaca',
+                      ? '#FFF4E5'
+                      : '#FDECEC',
                 },
               ]}
             >
@@ -925,7 +932,7 @@ export default function WordsPracticeScreen({ route, navigation }) {
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff0f5' },
+  container: { flex: 1, backgroundColor: colors.background },
 
   scrollContainer: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 100 },
@@ -935,64 +942,72 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 50,
-    paddingBottom: 16,
-    backgroundColor: '#fff0f5',
+    paddingBottom: 12,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
   },
   backButton: {
     paddingVertical: 8,
     paddingHorizontal: 16,
-    backgroundColor: '#ff6b6b',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 20,
-    shadowColor: '#ff6b6b',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: colors.divider,
   },
-  backButtonText: { color: 'white', fontSize: 16, fontWeight: '600' },
+  backButtonText: { color: colors.textPrimary, fontSize: 16, fontWeight: '600' },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#d32f2f',
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.textPrimary,
     flex: 1,
     textAlign: 'center',
   },
   statsContainer: { flexDirection: 'row', alignItems: 'center', gap: 15 },
-  statsText: { fontSize: 18, fontWeight: '700', color: '#d32f2f' },
-  streakText: { fontSize: 16, fontWeight: '700', color: '#e91e63' },
+  statsText: { fontSize: 14, fontWeight: '700', color: colors.textSecondary },
+  streakText: { fontSize: 14, fontWeight: '700', color: colors.textSecondary },
+
+  hero: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, backgroundColor: colors.background },
+  heroWord: { fontSize: 42, fontWeight: '900', color: colors.textPrimary, letterSpacing: -0.5 },
+  heroPhonetic: { fontSize: 16, fontStyle: 'italic', color: colors.textSecondary, marginTop: 4 },
 
   wordCard: {
-    backgroundColor: '#ffffff',
-    paddingVertical: 24,
+    backgroundColor: colors.surface,
+    paddingVertical: 20,
     paddingHorizontal: 20,
-    borderRadius: 24,
+    borderRadius: radii.xl,
     marginBottom: 20,
     alignItems: 'center',
-    shadowColor: '#ff6b6b',
-    shadowOpacity: 0.15,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
     shadowOffset: { width: 0, height: 4 },
     shadowRadius: 12,
-    elevation: 6,
-    borderWidth: 2,
-    borderColor: '#ffebee',
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: colors.divider,
   },
   wordImageContainer: { marginBottom: 20 },
   wordImageWrap: { width: 160, height: 160, alignItems: 'center', justifyContent: 'center' },
   wordImage: { width: '100%', height: '100%', resizeMode: 'contain' },
 
   wordInfo: { alignItems: 'center' },
-  word: { fontSize: 42, fontWeight: '800', color: '#d32f2f', marginBottom: 6, textAlign: 'center' },
+  word: { fontSize: 32, fontWeight: '800', color: colors.textPrimary, marginBottom: 6, textAlign: 'center' },
   phonetic: {
-    fontSize: 18,
-    color: '#e91e63',
+    fontSize: 16,
+    color: colors.textSecondary,
     fontStyle: 'italic',
     marginBottom: 4,
     fontWeight: '600',
     textAlign: 'center',
   },
   ipa: {
-    fontSize: 18,
-    color: '#ad1457',
+    fontSize: 16,
+    color: colors.textTertiary,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     marginBottom: 10,
     fontWeight: '600',
@@ -1002,19 +1017,19 @@ const styles = StyleSheet.create({
   difficultyText: { fontSize: 14, fontWeight: '600', textTransform: 'uppercase' },
 
   recognitionCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.surface,
     paddingVertical: 20,
     paddingHorizontal: 20,
-    borderRadius: 24,
+    borderRadius: radii.xl,
     marginBottom: 20,
     alignItems: 'center',
-    shadowColor: '#ff6b6b',
-    shadowOpacity: 0.15,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
     shadowOffset: { width: 0, height: 4 },
     shadowRadius: 12,
-    elevation: 6,
-    borderWidth: 2,
-    borderColor: '#ffebee',
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: colors.divider,
   },
   recognitionLabel: { fontSize: 16, color: '#6b7280', marginBottom: 8, fontWeight: '600' },
   recognitionText: {
@@ -1027,19 +1042,19 @@ const styles = StyleSheet.create({
   confidenceText: { fontSize: 14, color: '#6b7280', marginTop: 8, fontStyle: 'italic' },
 
   progressCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.surface,
     paddingVertical: 20,
     paddingHorizontal: 20,
-    borderRadius: 24,
+    borderRadius: radii.xl,
     marginBottom: 20,
     alignItems: 'center',
-    shadowColor: '#ff6b6b',
-    shadowOpacity: 0.15,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
     shadowOffset: { width: 0, height: 4 },
     shadowRadius: 12,
-    elevation: 6,
-    borderWidth: 2,
-    borderColor: '#ffebee',
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: colors.divider,
   },
   progressBar: {
     width: '100%',
@@ -1050,57 +1065,57 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   progressFill: { height: '100%', borderRadius: 6, minWidth: 4 },
-  accuracyText: { fontSize: 16, color: '#6b7280', fontWeight: '600', marginBottom: 4 },
-  evaluationText: { fontSize: 14, color: '#374151', fontWeight: '600', textAlign: 'center' },
+  accuracyText: { fontSize: 16, color: colors.textSecondary, fontWeight: '600', marginBottom: 4 },
+  evaluationText: { fontSize: 14, color: colors.textPrimary, fontWeight: '600', textAlign: 'center' },
 
   tipCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.surface,
     paddingVertical: 16,
     paddingHorizontal: 20,
-    borderRadius: 24,
+    borderRadius: radii.xl,
     marginBottom: 20,
     alignItems: 'center',
-    shadowColor: '#ff6b6b',
-    shadowOpacity: 0.15,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
     shadowOffset: { width: 0, height: 4 },
     shadowRadius: 12,
-    elevation: 6,
-    borderWidth: 2,
-    borderColor: '#ffebee',
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: colors.divider,
   },
-  tipText: { fontSize: 16, color: '#374151', textAlign: 'center', lineHeight: 22, fontWeight: '500' },
+  tipText: { fontSize: 16, color: colors.textPrimary, textAlign: 'center', lineHeight: 22, fontWeight: '500' },
 
   actionCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.surface,
     paddingVertical: 24,
     paddingHorizontal: 20,
-    borderRadius: 24,
+    borderRadius: radii.xl,
     marginBottom: 20,
     alignItems: 'center',
-    shadowColor: '#ff6b6b',
-    shadowOpacity: 0.15,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
     shadowOffset: { width: 0, height: 4 },
     shadowRadius: 12,
-    elevation: 6,
-    borderWidth: 2,
-    borderColor: '#ffebee',
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: colors.divider,
   },
   actionRow: { flexDirection: 'row', gap: 20, justifyContent: 'center' },
   actionButton: { alignItems: 'center', justifyContent: 'center' },
   icon: { width: 100, height: 100, marginBottom: 8 },
-  buttonLabel: { fontSize: 14, color: '#d32f2f', fontWeight: '700' },
+  buttonLabel: { fontSize: 14, color: colors.textPrimary, fontWeight: '700' },
 
   nextButton: {
-    backgroundColor: '#ff6b6b',
+    backgroundColor: colors.accent,
     paddingHorizontal: 28,
     paddingVertical: 14,
     borderRadius: 24,
     marginBottom: 20,
-    shadowColor: '#ff6b6b',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.12,
     shadowRadius: 8,
-    elevation: 6,
+    elevation: 4,
     alignSelf: 'center',
   },
   nextButtonText: { color: 'white', fontSize: 16, fontWeight: '700' },

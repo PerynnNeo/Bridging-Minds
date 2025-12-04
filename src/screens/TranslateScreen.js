@@ -5,7 +5,6 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Image,
   Animated,
   ScrollView,
   Alert,
@@ -16,9 +15,12 @@ import * as Speech from "expo-speech";
 import { Audio } from "expo-av";
 import Constants from "expo-constants";
 import { getUserProfile } from "../utils/personalization";
+import { colors, radii, typography } from "../utils/theme";
+import { Mic } from "lucide-react-native";
+import * as FileSystem from 'expo-file-system';
 
 // 🔐 API keys from app.config.js (.env → app.config.js → extra)
-const { OPENAI_API_KEY, GOOGLE_STT_API_KEY } = Constants.expoConfig?.extra ?? {};
+const { OPENAI_API_KEY, GOOGLE_STT_API_KEY } = (Constants.expoConfig?.extra ?? Constants?.manifestExtra ?? {});
 
 if (!OPENAI_API_KEY) {
   console.warn(
@@ -31,11 +33,7 @@ if (!GOOGLE_STT_API_KEY) {
   );
 }
 
-// Mic icons
-const micImages = {
-  inactive: require("../../assets/mic.png"),
-  recording: require("../../assets/mic_recording.png"),
-};
+// Mic icons (vector)
 
 // Convert blob → base64
 function blobToBase64(blob) {
@@ -47,7 +45,7 @@ function blobToBase64(blob) {
   });
 }
 
-// Google STT
+// Google STT (robust native handling)
 async function transcribeAudio(uri) {
   if (!GOOGLE_STT_API_KEY) {
     throw new Error(
@@ -55,11 +53,18 @@ async function transcribeAudio(uri) {
     );
   }
 
-  const res = await fetch(uri);
-  const blob = await res.blob();
-  if (blob.size < 1000) throw new Error("No speech detected");
-
-  const base64 = await blobToBase64(blob);
+  let base64;
+  if (Platform.OS === 'web') {
+    const res = await fetch(uri);
+    const blob = await res.blob();
+    if (blob.size < 1000) throw new Error("No speech detected");
+    base64 = await blobToBase64(blob);
+  } else {
+    const fileInfo = await FileSystem.getInfoAsync(uri);
+    if (!fileInfo.exists) throw new Error('Recording file was not created');
+    if (fileInfo.size < 1000) throw new Error('Recording is too short. Please speak longer.');
+    base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+  }
 
   const apiRes = await fetch(
     `https://speech.googleapis.com/v1/speech:recognize?key=${GOOGLE_STT_API_KEY}`,
@@ -70,9 +75,8 @@ async function transcribeAudio(uri) {
         config: {
           languageCode: "en-US",
           enableAutomaticPunctuation: true,
-          // Works well for short utterances; you can also use 'phone_call' or 'command_and_search'
-          model: "latest_short",
-          // useEnhanced: true, // (optional) legacy flag; latest_* are already enhanced
+          model: Platform.OS === 'web' ? 'latest_short' : 'phone_call',
+          useEnhanced: Platform.OS !== 'web',
         },
         audio: { content: base64 },
       }),
@@ -422,7 +426,7 @@ async function sendFeedback(payload) {
 
 export default function TranslateScreen({ navigation }) {
   const [isRecording, setIsRecording] = useState(false);
-  const [recordingRef, setRecordingRef] = useState(null);
+  const recordingRef = useRef(null);
   const [transcript, setTranscript] = useState("");
   const [options, setOptions] = useState([]);
   const [history, setHistory] = useState([]);
@@ -431,6 +435,8 @@ export default function TranslateScreen({ navigation }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const pulse = useRef(new Animated.Value(1)).current;
   const [fadeAnim] = useState(new Animated.Value(0));
+  const [emotion, setEmotion] = useState({ label: null, emoji: null, color: colors.surfaceAlt });
+  const emotionAnim = useRef(new Animated.Value(0)).current;
 
   // Load user profile and fade in animation
   useEffect(() => {
@@ -462,6 +468,23 @@ export default function TranslateScreen({ navigation }) {
     loop.start();
     return () => loop.stop();
   }, [isRecording, pulse]);
+
+  // Emotion tag appear animation
+  const animateEmotion = () => {
+    emotionAnim.setValue(0);
+    Animated.timing(emotionAnim, { toValue: 1, duration: 350, useNativeDriver: true }).start();
+  };
+
+  // Simple sentiment/emotion detection from text
+  const detectEmotion = (text) => {
+    const t = (text || "").toLowerCase();
+    let label = "Calm"; let emoji = "🙂"; let color = "#E6F0FF"; // soft blue
+    if (/(anxious|nervous|scared|afraid|worried|stress)/.test(t)) { label = "Nervous"; emoji = "😟"; color = "#FFEFD6"; }
+    else if (/(angry|mad|upset|frustrated|annoyed)/.test(t)) { label = "Tense"; emoji = "😠"; color = "#FFE3E3"; }
+    else if (/(sad|unhappy|down|depressed)/.test(t)) { label = "Sad"; emoji = "😔"; color = "#EDEBFF"; }
+    else if (/(happy|glad|excited|great|good)/.test(t)) { label = "Happy"; emoji = "🙂"; color = "#E7F9ED"; }
+    return { label, emoji, color };
+  };
 
   // Start recording
   const startRecording = async () => {
@@ -500,22 +523,21 @@ export default function TranslateScreen({ navigation }) {
 
       const rec = new Audio.Recording();
       await rec.prepareToRecordAsync({
-        ...Audio.RECORDING_OPTIONS_PRESET_HIGH_QUALITY,
         android: {
           extension: '.m4a',
           outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
           audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
-          sampleRate: 44100,
-          numberOfChannels: 2,
-          bitRate: 128000,
+          sampleRate: 16000,
+          numberOfChannels: 1,
+          bitRate: 64000,
         },
         ios: {
           extension: '.m4a',
           outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
           audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
-          sampleRate: 44100,
-          numberOfChannels: 2,
-          bitRate: 128000,
+          sampleRate: 16000,
+          numberOfChannels: 1,
+          bitRate: 64000,
           linearPCMBitDepth: 16,
           linearPCMIsBigEndian: false,
           linearPCMIsFloat: false,
@@ -523,13 +545,13 @@ export default function TranslateScreen({ navigation }) {
       });
       
       await rec.startAsync();
-      setRecordingRef(rec);
+      recordingRef.current = rec;
       setIsRecording(true);
       console.log('Recording started successfully in TranslateScreen');
 
       // auto-stop after 10s
       setTimeout(() => {
-        if (isRecording) {
+        if (recordingRef.current && isRecording) {
           console.log('Auto-stopping recording after timeout');
           stopRecording();
         }
@@ -537,7 +559,7 @@ export default function TranslateScreen({ navigation }) {
     } catch (e) {
       console.error('Recording error in TranslateScreen:', e);
       setIsRecording(false);
-      setRecordingRef(null);
+      recordingRef.current = null;
       Alert.alert("Recording Error", `Could not start recording: ${e.message}`);
       setStatusMsg("Tap the mic and speak naturally.");
     }
@@ -548,7 +570,7 @@ export default function TranslateScreen({ navigation }) {
     try {
       console.log('Stopping recording in TranslateScreen...');
       
-      if (!recordingRef) {
+      if (!recordingRef.current) {
         console.log('No recording to stop in TranslateScreen');
         return;
       }
@@ -557,11 +579,11 @@ export default function TranslateScreen({ navigation }) {
       setIsProcessing(true);
       console.log('Recording state updated, stopping...');
       
-      await recordingRef.stopAndUnloadAsync();
-      const uri = recordingRef.getURI();
+      await recordingRef.current.stopAndUnloadAsync();
+      const uri = recordingRef.current.getURI();
       console.log('Recording stopped, URI:', uri);
       
-      setRecordingRef(null);
+      recordingRef.current = null;
       setStatusMsg("Let me think about what you said...");
 
       // Step 1: Transcribe audio
@@ -573,6 +595,12 @@ export default function TranslateScreen({ navigation }) {
       try {
         const rewrites = await getRewrites(raw, userProfile);
         setOptions(rewrites);
+        // Emotion detection from final text
+        const detected = detectEmotion(rewrites[0] || raw);
+        setEmotion(detected);
+        animateEmotion();
+        // Speak automatically
+        try { Speech.speak(rewrites[0]); } catch (_) {}
         setStatusMsg("Pick the message that sounds right to you!");
       } catch (aiError) {
         console.error("AI rewrite error:", aiError);
@@ -592,13 +620,16 @@ export default function TranslateScreen({ navigation }) {
         // Fallback single sentence
         const fallbackSentence = createFallbackSingleSentence(raw);
         setOptions([fallbackSentence]);
+        const detected = detectEmotion(fallbackSentence);
+        setEmotion(detected);
+        animateEmotion();
         setStatusMsg("Here's a basic message (AI unavailable):");
       }
     } catch (e) {
       console.error("Recording/transcription error:", e);
       setIsRecording(false);
-      setRecordingRef(null);
-      Alert.alert("Error", `Could not process your voice: ${e.message}`);
+      recordingRef.current = null;
+      Alert.alert("Processing Error", `${e.message}`);
       setStatusMsg("Tap the microphone and say something!");
     } finally {
       setIsProcessing(false);
@@ -642,14 +673,7 @@ export default function TranslateScreen({ navigation }) {
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-          accessibilityLabel="Go back"
-        >
-          <Text style={styles.backButtonText}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>Let's Talk Better</Text>
+        <Text style={styles.title}>Translator</Text>
       </View>
 
       <Text style={styles.subtitle}>{statusMsg}</Text>
@@ -661,18 +685,17 @@ export default function TranslateScreen({ navigation }) {
             onPress={toggleRecording}
             style={[styles.micBtn, { opacity: isProcessing ? 0.6 : 1 }]}
             disabled={isProcessing}
+            accessibilityRole="button"
+            accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
           >
-            <Image
-              source={isRecording ? micImages.recording : micImages.inactive}
-              style={styles.micIcon}
-            />
+            <Mic size={96} color={isRecording ? colors.accent : colors.textSecondary} />
           </TouchableOpacity>
         </Animated.View>
 
         {/* Processing indicator */}
         {isProcessing && (
           <View style={styles.processingIndicator}>
-            <Text style={styles.processingText}>🤖 AI is working...</Text>
+            <Text style={styles.processingText}>AI is working...</Text>
           </View>
         )}
       </View>
@@ -686,21 +709,35 @@ export default function TranslateScreen({ navigation }) {
             {/* Single clear message */}
             <View style={styles.unifiedMessageContainer}>
               <Text style={styles.unifiedMessageText}>{options[0]}</Text>
+              {emotion.label && (
+                <Animated.View
+                  style={[
+                    styles.emotionTag,
+                    {
+                      backgroundColor: emotion.color,
+                      transform: [{ translateY: emotionAnim.interpolate({ inputRange: [0,1], outputRange: [6,0] }) }],
+                      opacity: emotionAnim,
+                    },
+                  ]}
+                >
+                  <Text style={styles.emotionText}>{emotion.emoji} {emotion.label}</Text>
+                </Animated.View>
+              )}
               <View className="unifiedActionsRow" style={styles.unifiedActionsRow}>
                 <TouchableOpacity
-                  style={[styles.actionBtn, { backgroundColor: "#10b981" }]}
+                  style={[styles.actionBtn, { backgroundColor: colors.success }]}
                   onPress={() => handleFeedback("correct", options[0])}
                 >
                   <Text style={styles.actionBtnText}>Correct</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.actionBtn, { backgroundColor: "#ef4444" }]}
+                  style={[styles.actionBtn, { backgroundColor: colors.danger }]}
                   onPress={() => handleFeedback("incorrect", options[0])}
                 >
                   <Text style={styles.actionBtnText}>Wrong</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.actionBtn, { backgroundColor: "#3b82f6" }]}
+                  style={[styles.actionBtn, { backgroundColor: colors.accent }]}
                   onPress={() => Speech.speak(options[0])}
                 >
                   <Text style={styles.actionBtnText}>Listen</Text>
@@ -727,37 +764,42 @@ export default function TranslateScreen({ navigation }) {
 
 // Styles
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff0f5" },
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
     paddingTop: 50,
     paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingBottom: 12,
     flexDirection: "row",
     alignItems: "center",
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
   },
   backButton: {
     paddingVertical: 8,
     paddingHorizontal: 16,
-    backgroundColor: "#ff6b6b",
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 20,
-    shadowColor: "#ff6b6b",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+    elevation: 2,
     marginRight: 16,
+    borderWidth: 1,
+    borderColor: colors.divider,
   },
   backButtonText: {
-    color: "white",
+    color: colors.textPrimary,
     fontSize: 16,
     fontWeight: "600",
   },
-  title: { fontSize: 36, fontWeight: "900", color: "#d32f2f", flex: 1 },
+  title: { ...typography.titleLarge, color: colors.textPrimary, flex: 1 },
   subtitle: {
-    fontSize: 24,
-    color: "#e91e63",
+    fontSize: 16,
+    color: colors.textSecondary,
     paddingHorizontal: 20,
-    marginTop: 6,
+    marginTop: 8,
     marginBottom: 14,
     fontWeight: "600",
   },
@@ -769,54 +811,54 @@ const styles = StyleSheet.create({
   micIcon: { width: 120, height: 120 },
   results: { flex: 1, paddingHorizontal: 16, marginTop: 10 },
   card: {
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
     padding: 20,
     marginVertical: 10,
-    shadowColor: "#ff6b6b",
-    shadowOpacity: 0.15,
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
     shadowOffset: { width: 0, height: 4 },
     shadowRadius: 12,
-    elevation: 6,
-    borderWidth: 2,
-    borderColor: "#ffebee",
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: colors.divider,
   },
-  cardLabel: { fontSize: 20, color: "#e91e63", marginBottom: 8, fontWeight: "700" },
-  cardText: { fontSize: 18, color: "#d32f2f", lineHeight: 24, fontWeight: "500" },
+  cardLabel: { fontSize: 16, color: colors.textSecondary, marginBottom: 8, fontWeight: "700" },
+  cardText: { fontSize: 16, color: colors.textPrimary, lineHeight: 24, fontWeight: "500" },
 
   clearMessageCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 24,
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
     padding: 24,
     marginVertical: 12,
-    shadowColor: "#ff6b6b",
-    shadowOpacity: 0.2,
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
     shadowOffset: { width: 0, height: 6 },
     shadowRadius: 16,
-    elevation: 8,
-    borderWidth: 3,
-    borderColor: "#ffebee",
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: colors.divider,
   },
   clearMessageLabel: {
-    fontSize: 28,
-    color: "#d32f2f",
-    marginBottom: 16,
+    fontSize: 18,
+    color: colors.textSecondary,
+    marginBottom: 12,
     fontWeight: "800",
     textAlign: "center",
   },
 
   unifiedMessageContainer: {
-    backgroundColor: "#fafafa",
-    borderRadius: 16,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radii.md,
     padding: 20,
-    borderWidth: 2,
-    borderColor: "#e0e0e0",
+    borderWidth: 1,
+    borderColor: colors.divider,
     alignItems: "center",
   },
   unifiedMessageText: {
-    fontSize: 28,
-    color: "#d32f2f",
-    lineHeight: 36,
+    fontSize: 22,
+    color: colors.textPrimary,
+    lineHeight: 30,
     fontWeight: "700",
     textAlign: "center",
     marginBottom: 20,
@@ -827,18 +869,33 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
+  emotionTag: {
+    alignSelf: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.divider,
+    marginBottom: 8,
+  },
+  emotionText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '700',
+  },
+
   processingIndicator: {
     marginTop: 12,
     paddingHorizontal: 16,
     paddingVertical: 8,
-    backgroundColor: "#ffebee",
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 16,
-    borderWidth: 2,
-    borderColor: "#ffcdd2",
+    borderWidth: 1,
+    borderColor: colors.divider,
   },
   processingText: {
-    fontSize: 16,
-    color: "#d32f2f",
+    fontSize: 14,
+    color: colors.textSecondary,
     fontWeight: "600",
     textAlign: "center",
   },

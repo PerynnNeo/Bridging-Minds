@@ -1,4 +1,5 @@
 // OnboardingQuiz.js
+
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -14,35 +15,55 @@ import {
   Platform,
   Linking
 } from 'react-native';
+
 import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
 import Constants from 'expo-constants';
-import { QUIZ_QUESTIONS, saveQuizResults, generatePersonalizationProfile } from '../utils/quizStorage';
 
-// API Configuration
+import {
+  QUIZ_QUESTIONS,
+  saveQuizResults,
+  generatePersonalizationProfile
+} from '../utils/quizStorage';
+
+
+// =========================
+// 🔑 API KEYS
+// =========================
 const GOOGLE_STT_API_KEY = Constants?.expoConfig?.extra?.GOOGLE_STT_API_KEY;
 
-// Convert blob to base64 for Google STT
+
+// =========================
+// 🔄 HELPERS: Blob → Base64
+// =========================
 function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result.split(',')[1]);
+
+    reader.onload = () =>
+      resolve(reader.result.split(',')[1]);
+
     reader.onerror = reject;
+
     reader.readAsDataURL(blob);
   });
 }
 
-// Google STT Integration for Expo Audio
+
+// =========================
+// 🎤 Google STT for Expo Native Recording
+// =========================
 async function transcribeAudio(uri) {
   try {
     const response = await fetch(uri);
     const blob = await response.blob();
-    
+
     if (blob.size < 1000) {
       throw new Error('No speech detected');
     }
 
     const base64 = await blobToBase64(blob);
+
     return await transcribeWebAudio(base64);
   } catch (error) {
     console.error('Transcription error:', error);
@@ -50,11 +71,14 @@ async function transcribeAudio(uri) {
   }
 }
 
-// Google STT Integration for Web Audio
+
+// =========================
+// 🎤 Google STT for Web Recording
+// =========================
 async function transcribeWebAudio(base64) {
   try {
     console.log('🔤 Sending audio to Google STT...');
-    
+
     const apiResponse = await fetch(
       `https://speech.googleapis.com/v1/speech:recognize?key=${GOOGLE_STT_API_KEY}`,
       {
@@ -79,21 +103,28 @@ async function transcribeWebAudio(base64) {
     }
 
     const result = await apiResponse.json();
-    const transcript = result?.results?.[0]?.alternatives?.[0]?.transcript?.trim() || '';
-    
+    const transcript =
+      result?.results?.[0]?.alternatives?.[0]?.transcript?.trim() || '';
+
     if (!transcript) {
       throw new Error('No speech detected');
     }
 
     console.log('✅ Google STT transcript:', transcript);
     return transcript;
+
   } catch (error) {
     console.error('Web Audio transcription error:', error);
     throw error;
   }
 }
 
+
+// =========================
+// MAIN COMPONENT
+// =========================
 export default function OnboardingQuiz({ navigation }) {
+
   const [currentSection, setCurrentSection] = useState(1);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState({});
@@ -107,34 +138,39 @@ export default function OnboardingQuiz({ navigation }) {
   const currentSectionData = QUIZ_QUESTIONS[`section${currentSection}`];
   const currentQuestion = currentSectionData.questions[currentQuestionIndex];
 
-  // Animation effects
+
+  // =========================
+  // ✨ Fade-in animation
+  // =========================
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 600,
       useNativeDriver: true,
     }).start();
-    
-    // Test Web Audio API availability
+
+
+    // Web Audio diagnostics
     console.log('🔍 Testing Web Audio API availability...');
-    console.log('🔍 navigator.mediaDevices:', !!navigator.mediaDevices);
-    console.log('🔍 navigator.mediaDevices.getUserMedia:', !!navigator.mediaDevices?.getUserMedia);
-    console.log('🔍 AudioContext:', !!window.AudioContext || !!window.webkitAudioContext);
-    console.log('🔍 MediaRecorder:', !!window.MediaRecorder);
-    
-    // Test basic microphone access
+    console.log('navigator.mediaDevices:', !!navigator.mediaDevices);
+    console.log('navigator.mediaDevices.getUserMedia:', !!navigator.mediaDevices?.getUserMedia);
+    console.log('AudioContext:', !!window.AudioContext || !!window.webkitAudioContext);
+    console.log('MediaRecorder:', !!window.MediaRecorder);
+
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       navigator.mediaDevices.getUserMedia({ audio: true })
         .then(stream => {
           console.log('✅ Basic microphone access works!');
-          stream.getTracks().forEach(track => track.stop());
+          stream.getTracks().forEach(t => t.stop());
         })
-        .catch(err => {
-          console.error('❌ Basic microphone access failed:', err);
-        });
+        .catch(err => console.error('❌ Basic microphone access failed:', err));
     }
   }, []);
 
+
+  // =========================
+  // 🎛 Pulse animation during recording
+  // =========================
   useEffect(() => {
     if (isRecording) {
       const pulse = Animated.loop(
@@ -143,150 +179,134 @@ export default function OnboardingQuiz({ navigation }) {
           Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true })
         ])
       );
+
       pulse.start();
       return () => pulse.stop();
     }
   }, [isRecording, pulseAnim]);
 
-  // Start recording using native Web Audio API
+
+  // ============================================================
+  // 🎤 START RECORDING (Decides Web vs Expo)
+  // ============================================================
   const startRecording = async () => {
     try {
-      console.log('🎤 STARTING RECORDING - OnboardingQuiz (Web Audio API)');
+      console.log('🎤 STARTING RECORDING - OnboardingQuiz');
       console.log('Platform:', Platform.OS);
-      console.log('User Agent:', navigator.userAgent);
-      
-      // Check if we're in a web environment
+
       if (Platform.OS === 'web') {
-        console.log('🌐 Using Web Audio API for web platform');
+        console.log('🌐 Using Web Audio API');
         await startWebRecording();
       } else {
-        console.log('📱 Using Expo Audio for native platform');
+        console.log('📱 Using Expo Audio');
         await startExpoRecording();
       }
+
     } catch (error) {
       console.error('Recording error:', error);
       setIsRecording(false);
       setRecording(null);
+
       Alert.alert(
-        'Recording Error', 
+        'Recording Error',
         `Could not start recording: ${error.message}. Please try again or use text input instead.`
       );
     }
   };
 
-  // Web Audio API recording (for mobile browsers)
+
+  // ============================================================
+  // 🌐 Web Recording (MediaRecorder)
+  // ============================================================
   const startWebRecording = async () => {
     try {
       console.log('🌐 Starting Web Audio API recording...');
-      
-      // Request microphone access
-      console.log('🔐 Requesting microphone access...');
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           sampleRate: 44100
-        } 
+        }
       });
-      console.log('✅ Microphone access granted');
-      
-      // Create MediaRecorder
+
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: 'audio/webm;codecs=opus'
       });
-      
+
       const audioChunks = [];
-      
+
       mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunks.push(event.data);
-        }
+        if (event.data.size > 0) audioChunks.push(event.data);
       };
-      
+
       mediaRecorder.onstop = async () => {
-        console.log('🛑 MediaRecorder stopped, processing audio...');
+        console.log('🛑 MediaRecorder stopped');
+
         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-        const audioUrl = URL.createObjectURL(audioBlob);
-        
-        // Convert to base64 for Google STT
         const base64 = await blobToBase64(audioBlob);
-        
+
         if (GOOGLE_STT_API_KEY) {
-          console.log('🔤 Transcribing with Google STT...');
           const transcript = await transcribeWebAudio(base64);
-          console.log('✅ Transcript received:', transcript);
           handleAnswer(transcript);
         } else {
-          console.log('🎭 Using mock transcription...');
-          const mockTranscripts = [
+          const mock = [
             "I like playing games and drawing",
-            "I have a mom and dad and a sister", 
+            "I have a mom and dad and a sister",
             "My favorite thing is playing soccer",
             "I felt proud when I learned to ride a bike",
             "I feel happy when I'm with my family"
           ];
-          const randomTranscript = mockTranscripts[Math.floor(Math.random() * mockTranscripts.length)];
-          handleAnswer(randomTranscript);
+
+          handleAnswer(mock[Math.floor(Math.random() * mock.length)]);
         }
-        
-        // Clean up
-        stream.getTracks().forEach(track => track.stop());
-        URL.revokeObjectURL(audioUrl);
+
         setIsProcessing(false);
+        stream.getTracks().forEach(t => t.stop());
       };
-      
-      // Start recording
+
       mediaRecorder.start();
       console.log('✅ Web Audio recording started');
-      
-      // Store the recorder and stream for stopping
+
       setRecording({ mediaRecorder, stream });
       setIsRecording(true);
-      
-      // Auto-stop after 15 seconds
+
       setTimeout(() => {
-        if (isRecording) {
-          console.log('⏰ Auto-stopping recording after timeout');
-          stopRecording();
-        }
+        if (isRecording) stopRecording();
       }, 15000);
-      
+
     } catch (error) {
       console.error('Web Audio recording error:', error);
       throw error;
     }
   };
 
-  // Expo Audio recording (for native apps)
+
+  // ============================================================
+  // 📱 Expo Audio Recording
+  // ============================================================
   const startExpoRecording = async () => {
     try {
-      console.log('📱 Starting Expo Audio recording...');
-      
-      // Request permissions with better error handling
-      console.log('🔐 Requesting microphone permissions...');
       const { status } = await Audio.requestPermissionsAsync();
-      console.log('🔐 Permission status:', status);
-      
+
       if (status !== 'granted') {
         Alert.alert(
-          'Permission Required', 
-          'Microphone permission is needed for voice input. Please enable it in your device settings.',
+          'Permission Required',
+          'Microphone permission is needed.',
           [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Settings', onPress: () => {
-              if (Platform.OS === 'ios') {
-                Linking.openURL('app-settings:');
-              } else {
-                Linking.openSettings();
+            {
+              text: 'Settings',
+              onPress: () => {
+                if (Platform.OS === 'ios') Linking.openURL('app-settings:');
+                else Linking.openSettings();
               }
-            }}
+            }
           ]
         );
         return;
       }
 
-      // Set audio mode with mobile-specific configurations
-      console.log('🔊 Setting audio mode...');
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
@@ -294,11 +314,9 @@ export default function OnboardingQuiz({ navigation }) {
         playThroughEarpieceAndroid: false,
         staysActiveInBackground: false,
       });
-      console.log('🔊 Audio mode set successfully');
 
-      console.log('🎙️ Creating recording instance...');
-      
       const recordingInstance = new Audio.Recording();
+
       await recordingInstance.prepareToRecordAsync({
         ...Audio.RECORDING_OPTIONS_PRESET_HIGH_QUALITY,
         android: {
@@ -316,160 +334,159 @@ export default function OnboardingQuiz({ navigation }) {
           sampleRate: 44100,
           numberOfChannels: 2,
           bitRate: 128000,
-          linearPCMBitDepth: 16,
-          linearPCMIsBigEndian: false,
-          linearPCMIsFloat: false,
         },
       });
-      
-      console.log('🎙️ Recording prepared, starting...');
+
       await recordingInstance.startAsync();
-      console.log('🎙️ Recording startAsync() completed');
-      
       setRecording(recordingInstance);
       setIsRecording(true);
-      console.log('✅ RECORDING STARTED SUCCESSFULLY!');
 
-      // Auto-stop after 15 seconds
       setTimeout(() => {
-        if (isRecording) {
-          console.log('Auto-stopping recording after timeout');
-          stopRecording();
-        }
+        if (isRecording) stopRecording();
       }, 15000);
+
     } catch (error) {
       console.error('Expo Audio recording error:', error);
       throw error;
     }
   };
 
-  // Stop recording and transcribe
+
+  // ============================================================
+  // 🛑 STOP RECORDING (Universal)
+  // ============================================================
   const stopRecording = async () => {
     try {
-      console.log('🛑 Stopping recording...');
-      
-      if (!recording) {
-        console.log('❌ No recording to stop');
-        return;
-      }
-      
+      if (!recording) return;
+
       setIsRecording(false);
       setIsProcessing(true);
-      console.log('🔄 Recording state updated, stopping...');
-      
-      // Check if it's Web Audio or Expo Audio
-      if (Platform.OS === 'web' && recording.mediaRecorder) {
-        console.log('🌐 Stopping Web Audio recording...');
-        recording.mediaRecorder.stop();
-        // The transcription will happen in the onstop event
-      } else {
-        console.log('📱 Stopping Expo Audio recording...');
-        await recording.stopAndUnloadAsync();
-        const uri = recording.getURI();
-        console.log('📱 Recording stopped, URI:', uri);
-        
-        setRecording(null);
 
-        if (GOOGLE_STT_API_KEY) {
-          console.log('🔤 Transcribing with Google STT...');
-          const transcript = await transcribeAudio(uri);
-          console.log('✅ Transcript received:', transcript);
-          handleAnswer(transcript);
-        } else {
-          console.log('🎭 Using mock transcription...');
-          const mockTranscripts = [
-            "I like playing games and drawing",
-            "I have a mom and dad and a sister",
-            "My favorite thing is playing soccer",
-            "I felt proud when I learned to ride a bike",
-            "I feel happy when I'm with my family"
-          ];
-          const randomTranscript = mockTranscripts[Math.floor(Math.random() * mockTranscripts.length)];
-          console.log('🎭 Mock transcript:', randomTranscript);
-          handleAnswer(randomTranscript);
-        }
-        setIsProcessing(false);
+      // --- Web ---
+      if (Platform.OS === 'web' && recording.mediaRecorder) {
+        recording.mediaRecorder.stop();
+        return;
       }
+
+      // --- Expo ---
+      await recording.stopAndUnloadAsync();
+      const uri = recording.getURI();
+      setRecording(null);
+
+      if (GOOGLE_STT_API_KEY) {
+        const transcript = await transcribeAudio(uri);
+        handleAnswer(transcript);
+      } else {
+        const mock = [
+          "I like playing games and drawing",
+          "I have a mom and dad and a sister",
+          "My favorite thing is playing soccer",
+          "I felt proud when I learned to ride a bike",
+          "I feel happy when I'm with my family"
+        ];
+        handleAnswer(mock[Math.floor(Math.random() * mock.length)]);
+      }
+
+      setIsProcessing(false);
+
     } catch (error) {
-      console.error('❌ Stop recording error:', error);
+      console.error('Stop recording error:', error);
       setIsRecording(false);
       setRecording(null);
       setIsProcessing(false);
+
       Alert.alert(
-        'Error', 
-        `Could not process your voice: ${error.message}. Please try typing instead.`
+        'Error',
+        `Could not process your voice: ${error.message}.`
       );
     }
   };
 
-  // Handle answer selection/input
+
+  // ============================================================
+  // SAVE ANSWER + MOVE NEXT
+  // ============================================================
   const handleAnswer = (answer) => {
     const newAnswers = { ...answers, [currentQuestion.id]: answer };
     setAnswers(newAnswers);
-    
-    // Move to next question or section
+
     if (currentQuestionIndex < currentSectionData.questions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
     } else {
-      // Section complete, move to next section
       if (currentSection < totalSections) {
         setCurrentSection(currentSection + 1);
         setCurrentQuestionIndex(0);
       } else {
-        // Quiz complete
         completeQuiz(newAnswers);
       }
     }
   };
 
-  // Handle MCQ selection
+
+  // ============================================================
+  // MULTI-CHOICE
+  // ============================================================
   const handleMCQSelection = (optionId) => {
     const currentAnswer = answers[currentQuestion.id];
-    
+
     if (currentQuestion.allowMultiple) {
-      // Multiple selection
-      const selectedOptions = Array.isArray(currentAnswer) ? currentAnswer : [];
-      const newSelection = selectedOptions.includes(optionId)
-        ? selectedOptions.filter(id => id !== optionId)
-        : [...selectedOptions, optionId];
-      
+      const selected = Array.isArray(currentAnswer) ? currentAnswer : [];
+
+      const newSelection = selected.includes(optionId)
+        ? selected.filter(id => id !== optionId)
+        : [...selected, optionId];
+
       if (newSelection.length > 0) {
         handleAnswer(newSelection);
       }
+
     } else {
-      // Single selection
       handleAnswer(optionId);
     }
   };
 
-  // Complete quiz and save results
+
+  // ============================================================
+  // COMPLETE QUIZ
+  // ============================================================
   const completeQuiz = async (finalAnswers) => {
     try {
-      const personalizationProfile = generatePersonalizationProfile(finalAnswers);
-      await saveQuizResults(personalizationProfile);
-      
-      // Navigate to home screen
+      const profile = generatePersonalizationProfile(finalAnswers);
+      await saveQuizResults(profile);
       navigation.replace('Home');
+
     } catch (error) {
       console.error('Error completing quiz:', error);
-      Alert.alert('Error', 'Could not save your results. Please try again.');
+      Alert.alert('Error', 'Could not save your results.');
     }
   };
 
-  // Render MCQ options
+
+  // ============================================================
+  // RENDER MCQ OPTIONS
+  // ============================================================
   const renderMCQOptions = () => {
-    return currentQuestion.options.map((option) => {
+    return currentQuestion.options.map(option => {
       const isSelected = currentQuestion.allowMultiple
-        ? Array.isArray(answers[currentQuestion.id]) && answers[currentQuestion.id].includes(option.id)
+        ? Array.isArray(answers[currentQuestion.id]) &&
+          answers[currentQuestion.id].includes(option.id)
         : answers[currentQuestion.id] === option.id;
 
       return (
         <TouchableOpacity
           key={option.id}
-          style={[styles.mcqOption, isSelected && styles.mcqOptionSelected]}
+          style={[
+            styles.mcqOption,
+            isSelected && styles.mcqOptionSelected
+          ]}
           onPress={() => handleMCQSelection(option.id)}
         >
-          <Text style={[styles.mcqOptionText, isSelected && styles.mcqOptionTextSelected]}>
+          <Text
+            style={[
+              styles.mcqOptionText,
+              isSelected && styles.mcqOptionTextSelected
+            ]}
+          >
             {option.text}
           </Text>
         </TouchableOpacity>
@@ -477,7 +494,10 @@ export default function OnboardingQuiz({ navigation }) {
     });
   };
 
-  // Render text input
+
+  // ============================================================
+  // TEXT INPUT WITH MIC
+  // ============================================================
   const renderTextInput = () => {
     const hasMic = currentQuestion.micAvailable || currentQuestion.micRecommended;
     const micRecommended = currentQuestion.micRecommended;
@@ -488,22 +508,23 @@ export default function OnboardingQuiz({ navigation }) {
           style={styles.textInput}
           placeholder="Type your answer here..."
           value={answers[currentQuestion.id] || ''}
-          onChangeText={(text) => setAnswers({ ...answers, [currentQuestion.id]: text })}
+          onChangeText={(text) =>
+            setAnswers({ ...answers, [currentQuestion.id]: text })
+          }
           multiline
-          textAlignVertical="top"
         />
-        
+
         {hasMic && (
           <View style={styles.micContainer}>
             <Text style={styles.micLabel}>
-              {micRecommended ? '🎤 Speak your answer (recommended)' : '🎤 Mic is available to speak'}
+              {micRecommended ? 'Speak your answer (recommended)' : 'Mic available'}
             </Text>
-            
-            {/* Debug Info */}
+
             <Text style={styles.debugText}>
-              Status: {isRecording ? '🔴 RECORDING' : '⚪ Ready'} | Processing: {isProcessing ? 'Yes' : 'No'}
+              Status: {isRecording ? 'RECORDING' : 'Ready'}  
+              | Processing: {isProcessing ? 'Yes' : 'No'}
             </Text>
-            
+
             <View style={styles.micButtonContainer}>
               {isRecording ? (
                 <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
@@ -516,7 +537,7 @@ export default function OnboardingQuiz({ navigation }) {
                       source={require('../../assets/mic_recording.png')}
                       style={styles.micIcon}
                     />
-                    <Text style={styles.micButtonText}>🔴 STOP RECORDING</Text>
+                    <Text style={styles.micButtonText}>STOP RECORDING</Text>
                   </TouchableOpacity>
                 </Animated.View>
               ) : (
@@ -529,7 +550,7 @@ export default function OnboardingQuiz({ navigation }) {
                     source={require('../../assets/mic.png')}
                     style={styles.micIcon}
                   />
-                  <Text style={styles.micButtonText}>🎤 START RECORDING</Text>
+                  <Text style={styles.micButtonText}>START RECORDING</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -546,11 +567,23 @@ export default function OnboardingQuiz({ navigation }) {
     );
   };
 
-  // Calculate progress
-  const progress = ((currentSection - 1) * 100 + (currentQuestionIndex + 1) * (100 / currentSectionData.questions.length)) / totalSections;
 
+  // ============================================================
+  // PROGRESS BAR %
+  // ============================================================
+  const progress =
+    ((currentSection - 1) * 100 +
+      (currentQuestionIndex + 1) *
+        (100 / currentSectionData.questions.length)) /
+    totalSections;
+
+
+  // ============================================================
+  // UI RENDER
+  // ============================================================
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+      
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Getting to Know You</Text>
@@ -562,27 +595,35 @@ export default function OnboardingQuiz({ navigation }) {
       {/* Progress Bar */}
       <View style={styles.progressBarContainer}>
         <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: `${progress}%` }]} />
+          <View
+            style={[
+              styles.progressFill,
+              { width: `${progress}%` }
+            ]}
+          />
         </View>
       </View>
 
       {/* Section Title */}
       <View style={styles.sectionTitleContainer}>
-        <Text style={styles.sectionTitle}>{currentSectionData.title}</Text>
+        <Text style={styles.sectionTitle}>
+          {currentSectionData.title}
+        </Text>
       </View>
 
       {/* Question Card */}
-      <ScrollView style={styles.questionContainer} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.questionContainer}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.questionCard}>
-          <Text style={styles.questionText}>{currentQuestion.text}</Text>
-          
-          {currentQuestion.type === 'mcq' ? (
-            <View style={styles.mcqContainer}>
-              {renderMCQOptions()}
-            </View>
-          ) : (
-            renderTextInput()
-          )}
+          <Text style={styles.questionText}>
+            {currentQuestion.text}
+          </Text>
+
+          {currentQuestion.type === 'mcq'
+            ? <View style={styles.mcqContainer}>{renderMCQOptions()}</View>
+            : renderTextInput()}
         </View>
       </ScrollView>
 
@@ -592,151 +633,175 @@ export default function OnboardingQuiz({ navigation }) {
           <TouchableOpacity
             style={styles.nextButton}
             onPress={() => {
-              if (currentQuestion.type === 'text' && answers[currentQuestion.id]) {
+              if (currentQuestion.type === 'text') {
                 handleAnswer(answers[currentQuestion.id]);
               }
             }}
           >
             <Text style={styles.nextButtonText}>
-              {currentSection === totalSections && currentQuestionIndex === currentSectionData.questions.length - 1
+              {currentSection === totalSections &&
+              currentQuestionIndex ===
+                currentSectionData.questions.length - 1
                 ? 'Complete Quiz'
-                : 'Next'
-              }
+                : 'Next'}
             </Text>
           </TouchableOpacity>
         </View>
       )}
+
     </Animated.View>
   );
 }
 
+
+// =========================
+// 🎨 STYLES
+// =========================
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff0f5',
+    backgroundColor: '#F7F7F9',
   },
+
   header: {
     paddingTop: 50,
     paddingHorizontal: 20,
     paddingBottom: 16,
-    backgroundColor: '#ffebee',
-    borderBottomColor: 'rgba(255,107,107,0.2)',
+    backgroundColor: '#f9f7f0',
+    borderBottomColor: '#E5E7EB',
     borderBottomWidth: 2,
   },
+
   headerTitle: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#d32f2f',
+    color: '#0A0A0A',
     textAlign: 'center',
     marginBottom: 8,
   },
+
   progressText: {
     fontSize: 16,
-    color: '#e91e63',
+    color: '#687d67',
     textAlign: 'center',
     fontWeight: '600',
   },
+
   progressBarContainer: {
     paddingHorizontal: 20,
     paddingVertical: 16,
   },
+
   progressBar: {
     height: 8,
-    backgroundColor: '#ffcdd2',
+    backgroundColor: '#f9f7f0',
     borderRadius: 4,
     overflow: 'hidden',
   },
+
   progressFill: {
     height: '100%',
-    backgroundColor: '#ff6b6b',
+    backgroundColor: '#687d67',
     borderRadius: 4,
   },
+
   sectionTitleContainer: {
     paddingHorizontal: 20,
     paddingBottom: 16,
   },
+
   sectionTitle: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#d32f2f',
+    color: '#0A0A0A',
     textAlign: 'center',
   },
+
   questionContainer: {
     flex: 1,
     paddingHorizontal: 16,
   },
+
   questionCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#FFFFFF',
     borderRadius: 24,
     padding: 24,
     marginBottom: 20,
-    shadowColor: '#ff6b6b',
-    shadowOpacity: 0.15,
+    shadowColor: 'rgba(0,0,0,0.06)',
+    shadowOpacity: 1,
     shadowOffset: { width: 0, height: 4 },
     shadowRadius: 12,
     elevation: 6,
     borderWidth: 2,
-    borderColor: '#ffebee',
+    borderColor: '#f9f7f0',
   },
+
   questionText: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#d32f2f',
+    color: '#0A0A0A',
     marginBottom: 20,
     textAlign: 'center',
     lineHeight: 28,
   },
-  mcqContainer: {
-    gap: 12,
-  },
+
+  mcqContainer: { gap: 12 },
+
   mcqOption: {
-    backgroundColor: '#ffebee',
+    backgroundColor: '#f9f7f0',
     paddingVertical: 16,
     paddingHorizontal: 20,
     borderRadius: 16,
     borderWidth: 2,
-    borderColor: '#ffcdd2',
+    borderColor: '#E5E7EB',
   },
+
   mcqOptionSelected: {
-    backgroundColor: '#ff6b6b',
-    borderColor: '#d32f2f',
+    backgroundColor: '#687d67',
+    borderColor: '#334155',
   },
+
   mcqOptionText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#d32f2f',
+    color: '#0A0A0A',
     textAlign: 'center',
   },
+
   mcqOptionTextSelected: {
-    color: '#ffffff',
+    color: '#FFFFFF',
   },
-  textInputContainer: {
-    gap: 16,
-  },
+
+  textInputContainer: { gap: 16 },
+
   textInput: {
-    backgroundColor: '#ffebee',
+    backgroundColor: '#f9f7f0',
     borderRadius: 16,
     padding: 16,
     fontSize: 16,
-    color: '#d32f2f',
+    color: '#0A0A0A',
     borderWidth: 2,
-    borderColor: '#ffcdd2',
+    borderColor: '#E5E7EB',
     minHeight: 100,
     textAlignVertical: 'top',
   },
+
   micContainer: {
     alignItems: 'center',
     gap: 12,
   },
+
   micLabel: {
     fontSize: 16,
-    color: '#e91e63',
+    color: '#687d67',
     fontWeight: '600',
     textAlign: 'center',
   },
+
   micButtonContainer: {
     alignItems: 'center',
   },
+
   micButton: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -744,60 +809,69 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 2,
   },
+
   readyButton: {
-    backgroundColor: '#e8f5e8',
-    borderColor: '#4caf50',
+    backgroundColor: '#E4F4E4',
+    borderColor: '#34C759',
   },
+
   recordingButton: {
-    backgroundColor: '#ffebee',
-    borderColor: '#f44336',
+    backgroundColor: '#f9f7f0',
+    borderColor: '#FF9F0A',
   },
+
   micIcon: {
     width: 60,
     height: 60,
     marginBottom: 8,
   },
+
   micButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#d32f2f',
+    color: '#0A0A0A',
   },
+
   debugText: {
     fontSize: 12,
-    color: '#666',
+    color: '#6B7280',
     textAlign: 'center',
     marginBottom: 8,
     fontFamily: 'monospace',
   },
+
   processingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
+
   processingText: {
     fontSize: 14,
-    color: '#e91e63',
+    color: '#687d67',
     fontWeight: '500',
   },
+
   nextButtonContainer: {
     paddingHorizontal: 20,
     paddingBottom: 20,
   },
+
   nextButton: {
-    backgroundColor: '#ff6b6b',
+    backgroundColor: '#687d67',
     paddingVertical: 16,
     borderRadius: 24,
-    shadowColor: '#ff6b6b',
+    shadowColor: 'rgba(0,0,0,0.06)',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
   },
+
   nextButtonText: {
-    color: '#ffffff',
+    color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '700',
     textAlign: 'center',
   },
 });
-

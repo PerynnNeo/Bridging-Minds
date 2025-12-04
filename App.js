@@ -7,12 +7,16 @@ import { Image } from 'react-native';
 import { enableScreens } from 'react-native-screens';
 import React, { useState, useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { Mic, MessageSquare, Settings, BookOpen } from 'lucide-react-native';
+import { colors } from './src/utils/theme';
 
 import HomeScreen from './src/screens/HomeScreen';
 import TranslateScreen from './src/screens/TranslateScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import WordsNavigator from './src/navigation/WordsNavigator';
 import ConversationBuddyScreen from './src/screens/ConversationBuddy';
+import ChatbotScreen from './src/screens/ChatbotScreen';
+import PracticeScreen from './src/screens/PracticeScreen';
 import OnboardingQuiz from './src/screens/OnboardingQuiz';
 import { isQuizCompleted } from './src/utils/quizStorage';
 
@@ -20,6 +24,7 @@ enableScreens();
 
 const Tab = createBottomTabNavigator();
 const HomeStack = createNativeStackNavigator();
+const PracticeStack = createNativeStackNavigator();
 
 function HomeStackScreen() {
   return (
@@ -29,6 +34,16 @@ function HomeStackScreen() {
       <HomeStack.Screen name="ConversationBuddy" component={ConversationBuddyScreen} />
       <HomeStack.Screen name="WordsRoot" component={WordsNavigator} />
     </HomeStack.Navigator>
+  );
+}
+
+function PracticeStackScreen() {
+  return (
+    <PracticeStack.Navigator screenOptions={{ headerShown: false }}>
+      <PracticeStack.Screen name="PracticeMain" component={PracticeScreen} />
+      <PracticeStack.Screen name="ConversationBuddy" component={ConversationBuddyScreen} />
+      <PracticeStack.Screen name="WordsRoot" component={WordsNavigator} />
+    </PracticeStack.Navigator>
   );
 }
 
@@ -60,13 +75,13 @@ export default function App() {
 
   const theme = {
     ...DefaultTheme,
-    colors: { ...DefaultTheme.colors, background: '#fef7f0' },
+    colors: { ...DefaultTheme.colors, background: colors.background },
   };
 
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#ff6b6b" />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -84,38 +99,43 @@ export default function App() {
     <NavigationContainer theme={theme}>
       <StatusBar style="dark" />
       <Tab.Navigator
+        initialRouteName="Translate"
         screenOptions={({ route }) => ({
           headerShown: false,
           tabBarShowLabel: false,
-          tabBarActiveTintColor: '#ff6b6b',
-          tabBarInactiveTintColor: '#ffb3ba',
+          tabBarActiveTintColor: colors.accent,
+          tabBarInactiveTintColor: colors.textTertiary,
           tabBarItemStyle: { flex: 1 }, // equal width per visible tab
           tabBarStyle: {
             position: 'absolute',
             left: 12, right: 12, bottom: 10,
             height: 72, paddingBottom: 8, paddingTop: 8,
-            backgroundColor: '#fff5f5',
+            backgroundColor: colors.surface,
             borderTopWidth: 0, borderRadius: 16,
-            shadowColor: '#000', shadowOpacity: 0.08,
+            shadowColor: '#000', shadowOpacity: 0.06,
             shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 8,
           },
-          tabBarIcon: () => {
-            if (route.name === 'Home') {
-              return <Image source={require('./assets/home.png')} style={{ width: 34, height: 34 }} />;
-            }
+          tabBarIcon: ({ color }) => {
             if (route.name === 'Translate') {
-              return <Image source={require('./assets/microphone.png')} style={{ width: 34, height: 34 }} />;
+              return <Mic size={26} color={color} />;
+            }
+            if (route.name === 'Chat') {
+              return <MessageSquare size={26} color={color} />;
+            }
+            if (route.name === 'Practice') {
+              return <BookOpen size={26} color={color} />;
             }
             if (route.name === 'Profile') {
-              return <Image source={require('./assets/setting.png')} style={{ width: 34, height: 34 }} />;
+              return <Settings size={26} color={color} />;
             }
             return null;
           },
         })}
       >
         {/* Exactly THREE visible tabs → spaced evenly */}
-        <Tab.Screen name="Home" component={HomeStackScreen} />
         <Tab.Screen name="Translate" component={TranslateScreen} />
+        <Tab.Screen name="Practice" component={PracticeStackScreen} />
+        <Tab.Screen name="Chat" component={ChatbotScreen} />
         <Tab.Screen name="Profile" component={ProfileScreen} />
       </Tab.Navigator>
     </NavigationContainer>
@@ -127,6 +147,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff0f5',
+    backgroundColor: colors.background,
   },
 });

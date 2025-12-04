@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, Image, ScrollView, Animated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Animated } from 'react-native';
+import { colors, radii, spacing, typography, shadows } from '../utils/theme';
 
 const directories = [
   { key: 'words',        title: 'Words Practice',     icon: require('../../assets/WordsPractice.png') },
@@ -66,17 +67,13 @@ export default function HomeScreen({ navigation }) {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Image source={require('../../assets/home.png')} style={styles.mascot} />
+          <View style={styles.brandDot} />
           <View>
-            <Text style={styles.headerTitle}>Fun Learning Time</Text>
+            <Text style={styles.headerTitle}>BridgingMinds</Text>
             <View style={styles.progressBarOuter}>
               <View style={styles.progressBarInner} />
             </View>
           </View>
-        </View>
-        <View style={styles.currency}>
-          <Image source={require('../../assets/flower.png')} style={styles.currencyIcon} />
-          <Text style={styles.currencyText}>5</Text>
         </View>
       </View>
 
@@ -86,7 +83,7 @@ export default function HomeScreen({ navigation }) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Directories */}
+        {/* Primary actions */}
         {directories.map((item) => renderItem({ item }))}
       </ScrollView>
     </Animated.View>
@@ -94,23 +91,19 @@ export default function HomeScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff0f5' },
+  container: { flex: 1, backgroundColor: colors.background },
 
   header: {
-    paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10,
-    backgroundColor: '#ffebee',
+    paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12,
+    backgroundColor: colors.surface,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    borderBottomColor: 'rgba(255,107,107,0.2)', borderBottomWidth: 2,
+    borderBottomColor: colors.divider, borderBottomWidth: 1,
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center' },
-  mascot: { width: 66, height: 66, marginRight: 10 },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: '#d32f2f', marginBottom: 8 },
-  progressBarOuter: { height: 16, width: 240, backgroundColor: '#ffcdd2', borderRadius: 25, overflow: 'hidden' },
-  progressBarInner: { width: '30%', height: '100%', backgroundColor: '#ff6b6b' },
-
-  currency: { flexDirection: 'row', alignItems: 'center' },
-  currencyIcon: { width: 77, height: 44, marginRight: 6 },
-  currencyText: { fontSize: 36, fontWeight: '800', color: '#d32f2f' },
+  brandDot: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.accent, marginRight: 12 },
+  headerTitle: { ...typography.title, color: colors.textPrimary, marginBottom: 8 },
+  progressBarOuter: { height: 8, width: 220, backgroundColor: colors.surfaceAlt, borderRadius: 25, overflow: 'hidden' },
+  progressBarInner: { width: '40%', height: '100%', backgroundColor: colors.accent },
 
   challengeCard: {
     marginTop: 45, marginHorizontal: 16,
@@ -137,17 +130,17 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 100 },
 
   card: {
-    backgroundColor: '#ffffff',
-    paddingVertical: 24, paddingHorizontal: 20,
-    borderRadius: 24, marginBottom: 20, flexDirection: 'row', alignItems: 'center',
-    shadowColor: '#ff6b6b', shadowOpacity: 0.15, shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 12, elevation: 6, borderWidth: 2, borderColor: '#ffebee',
+    backgroundColor: colors.surface,
+    paddingVertical: 20, paddingHorizontal: 16,
+    borderRadius: radii.xl, marginBottom: 16, flexDirection: 'row', alignItems: 'center',
+    shadowColor: '#000', shadowOpacity: 0.06, shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12, elevation: 3, borderWidth: 1, borderColor: colors.divider,
   },
   cardIconWrap: {
-    width: 60, height: 60, borderRadius: 16, backgroundColor: '#ffebee',
+    width: 56, height: 56, borderRadius: radii.md, backgroundColor: colors.surfaceAlt,
     alignItems: 'center', justifyContent: 'center', marginRight: 16,
-    borderWidth: 2, borderColor: '#ffcdd2',
+    borderWidth: 1, borderColor: colors.divider,
   },
-  cardIcon: { width: 70, height: 68 },
-  cardTitle: { fontSize: 28, fontWeight: '700', color: '#d32f2f' },
+  cardIcon: { width: 56, height: 52 },
+  cardTitle: { fontSize: 22, fontWeight: '700', color: colors.textPrimary },
 });
